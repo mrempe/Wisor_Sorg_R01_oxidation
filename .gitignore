@@ -3,8 +3,13 @@
 papers/
 other_models_code/
 
-
+# Don't include my hours #
 *.xlsx
+
+# Large files like matlab workspaces #
+######################################
+*.mat
+
 
 
 # OS generated files #
