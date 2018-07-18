@@ -1,0 +1,322 @@
+My notes to self on Wisor/Sorg grant -*- mode: org -*-
+Summer 2018-
+
+* Tuesday, May 22, 2018
+A possible main question I would like to address was presented to me by Jonathan in an email 3.1.18:  "How would an increase in GABA affect network 
+properties, especially gamma activity?".  Here is a proposed chain of logic:
+sleep deprivation -> increased parvalbumin (PV) -> increased GABA (inhibition onto pyramidal neurons) -> cognitive deficits after sleep deprivation
+
+This seems to imply that we will need a rather detailed network. Many have been published including by XJ Wang, and Bill Lytton.  One of the most 
+mathematical and detailed dates back to the 1970s: "The brain wave equation: a model for the EEG" by Paul Nunez. This seems way too complicated for what 
+we want to do.  
+
+:NOTE: the model could focus on any one or more of the arrows above
+
+My model will need:
+- to be able to generate gamma activity
+- have GABA as an input
+- to display different sleep states (and therefore include processes S and C?)
+- to tie gamma activity to sleep (maybe.  Figure 1 in the grant)
+
+
+How does increasing GABA cause a reduction in gamma power?  Grant figure 1.   Wang and Buzsaki 1996 include a figure (figure 12) where they 
+vary g_syn which is the maximal conductance of GABA synapses.   
+
+
+* Wednesday, May 23, 2018
+I'm reading a book chapter by Nunez about complexities of EEG modeling.  I think we need to take a high level approach.  Wang and Buzsaki 1996 may be
+about as complicated as we would want to go.  I would need to include effects of sleep and possibly Circadian on that model, perhaps. 
+
+Another simpler approach:  Jonathan and Barb show that gamma activity declines with increasing sleep need.  Perhaps I could model it just like 
+Process S just backwards.  I would find the optimal time constants Ti and Td to fit the data (spontaneous quiet wake intervals of 5 minutes or more?) and quantify
+the changes in gamma activity based on whether or not PNNs were depleted or not.   
+
+* Thursday, May 24, 2018
+Reading through the grant proposal again.  Basic terms: :redox: (short for reduction-oxidation reaction) redox reactions involve the transfer of 
+electrons between chemical species. :oxidation: is the loss of electrons or an increase in oxidation state and :reduction: is the gain of electrons 
+or a decrease in oxidation state.  For example, during combustion of wood, oxygen from the air is reduced, gaining electrons from carbon which is oxidized.  
+Rust and fire are two examples of redox reactions.  
+
+:Question: Are we interested in increases in gamma activity only during quiet wake?  What about during SWS?  
+
+I keep seeing "neural mass model" show up.  May be worth looking into.  
+
+Key paper:  Wendling et al 2002 seems to be a really important paper for this type of modeling.  tons of citations and many variations off the original model. 
+Also take a careful look at Jia and Kohn JNeurosci 2013.  They wrote the primer on gamma rhythms.  
+
+* Wednesday, May 30, 2018
+Another key paper is Costa et al 2016. They connect a mutual inhibition model like mine (from Victoria and Cecilia) to populations of pyramidal cells and inhibitory 
+cells (PV interneurons?) and generate realistic EEG signals out of the model.  Does not include circadian effects, but does include homeostat.  I would need to modify 
+this framework to work for rodent sleep (rather than human) and modify to help us understand PNN
+
+* Friday, June 1, 2018
+This week I was asked to help debug some of Jonathan's code for Michelle and in doing so I made significant improvements to the universalEdfLoader function. 
+Also, I spent today speeding up the autoscoring code that uses .edf as input.  I made many significant improvements in efficiency including calling pwelch only 
+once instead of in a loop. Overall computation time was reduced from over a minute to less than 30 seconds.  
+
+
+* Monday, June 11, 2018
+I've been working on implementing the Costa et al 2016 model.  I was finally able to compile his mex code, but it crashes matlab partway through the run.  I emailed 
+Michael and he responded saying that he no longer works in academia and that he may have broken the code.  He will check into it and get back to me. 
+
+Meanwhile I have coded up the sleep/wake portion of the model and it now seems to work.  
+:NOTE: the output of the sleep/wake model is not dependent on the parameters tau_E, tau_G, and tau_A.  The values in the C++ code are different than those in the paper, but
+choosing either value doesn't seem to affect the output at all.  
+
+
+* Wednesday, June 13, 2018
+I now have the Costa model working in MATLAB without noise.  The model takes about an hour to run, but output looks good.  With noise is another question.  I have tried 
+several approaches and none seem to work.  Running a 24 simulation with noise crashed matlab after about 8 hours (24 G of memory).  Running it on just one hour
+still takes a while and gives me much noisier output than Costa was getting.  
+
+I've been thinking about whether this is a true SDE or not.  I don't think so.  An SDE has the noise term depending on one or more of the dependent variables.  For me the 
+noise is just added to two variables.  I'm not sure I need a SDE solver, but I'm also not sure why adding noise makes the computation so slow and so unstable.
+
+:UPDATE: this is an SDE and I do need an SDE solver.  I've spent quite a bit of time reading about SDE solvers.    
+
+:idea: Maybe I could set up a big vector of random numbers with correct mean and SD and just add one of these numbers in to the update of the two variables each time step.
+Make the vector of length so that if the minimum step size were used throughout simulation we would have enough random numbers for every time step.  
+I tried this with my fixed-step solver and it did not work. Simulation outputs did not look stochastic and were not even close to the correct behavior (compared
+to the w/o noise case)
+
+* Monday, June 18, 2018
+
+:PROBLEM:  one thing to think about:  if things like gamma power come only from the stochastic nature of the simulations, how do I reliably measure gamma power since 
+each simulation will be different than the others?  Perhaps I could measure gamma for each simulation and then average the gamma power over all simulations.
+Run the simulation a few times and check gamma.  Is it about the same each time?      
+
+* Tuesday, June 19, 2018
+The implementation I coded up yesterday (due to Chang 1987) seems to have worked.  I ran a 2-hour simulation and it looks good so far.  Except it took 
+about 2 hours to simulate two hours of data.  
+
+I'm looking at the SDETools suite to see if it would be faster.  
+
+
+* Thursday, June 21, 2018
+So far it looks as if SDETools is faster, but keep in mind that it is a lower order method.  It's like comparing Forward Euler to RK4.  RK4 has
+more function evals and more steps so with the same step size it will be slower, but more accurate. 
+:THINK:  what is a fair way to compare the two integrators?  How to I measure accuracy/convergence of a method for SDE? :ONE: :IDEA: check spectral
+power.  If it does not change when I make the time step larger, then we're OK.  
+
+I ran my sde solver in Octave in linux and it was MUCH MUCH slower.  sde_euler didn't even run in octave because of too many differences between matlab and Octave. 
+
+Trying octave in windows now.  Much slower.  47 minutes rather than 47 seconds in Matlab.  This was for a simulation of 6 seconds I think. Matlab in Windows is the 
+way to go. 
+
+* Friday, June 22, 2018
+Tyring to see how Costa gets spectral information for the sleep scoring, or if he does at all.  
+
+It required 49 minutes to run Costa's code for a 24-hr simulation.  That was running Data_Sleep_Transition.m which is what Costa says requires ~1hr.      
+Data_Sleep_Epochs() required another minute or so, but it ran without errors.  
+Costa's code seems to be running and the data are stored in Data/Timeseries_FULL.mat and Data/Sleep_Epochs.mat.  The script Plot_Timeseries_Full() works 
+and replicates figure 7 in their paper.  
+:TODO: Write up code to check the spectral power of the output of Costa's output. Did this in the command line using code 
+from generate_freq_bands_from_edf.m and something looks wrong.  All the frequency bands seem to behave the same way. All go up during SWS and there 
+is more delta power than anything else, all the time, even during wakefulness.  
+:TODO: make sure my pwelch calculations are working and the issue is the model output, not my pwelch stuff. Read in some real polysomnography 
+data where I know the sleep states and make sure my pwelch code is behaving correctly.   
+:TODO: Try running my little implementation for 24 hours to see how long it takes. And make sure output is like Costa's.  
+
+* Monday, June 25, 2018
+It doesn't look like Costa uses spectral info at all when it comes to classifying sleep states.  He manually classifies just by looking at the data, I can't see 
+that he uses spectral power at all.    
+
+11:20: I plotted the power in delta, theta, and beta freq bins for the experimental data E2697Base, and for the data generated by the Costa model.  Here are some problems:
+during wakefulness, for the Costa model, delta power is still higher than theta or beta power.  Delta goes up by a factor of about 40 between baseline and NREMS episodes, but theta seems to just sit there doing nothing.  Theta is lower than delta all the time, no matter which stage.  Theta actually increases a little compared to baseline
+during SWS.  During REMS, delta drops significantly, but is still higher than theta or beta
+
+
+* Tuesday, June 26, 2018
+I'm running run_costa_model_using_sde_solver on the Inscopix machine using the GPU.  with dt=0.1 and t=0:dt:60000 it is taking about 3 hours.  Re-run this exact 
+simulation on UltraRoss.  I thought it took about 47 seconds.  Also check to see if using the GPU helps at all on Inscopix.  
+
+2:15 Average delta power during first 6 minutes of simulation (using run_costa_model_using_sde_solver.m) is very dependent on step size.  Changing dt from 0.1 ms 
+to 1 ms changes averge delta power from 5.5 to 4.3.  
+
+Make a frequency power plot of the output of Costa model (in Data directory) for the first 12 hours.  Then compare that to the same frequency power plot 
+made during SWS.  power on vertical axis and frequency on horizontal axis.  
+
+* Wednesday, June 27, 2018
+I worked some on the Wendling model today.  The code given on ModelDB works and I computed delta power and alpha power for 100 seconds (10 epochs) during
+wakefulness. It looks promising, but this model does not have sleep states, only wake and epilepsy as far as I can tell.  If I am going to be modifying a 
+model anyway, I think I would prefer to modify the Costa model and not the Wendling model. 
+:HOWEVER: It may be worth looking at how she does noise.  She has a separate function for noise and then uses a regular (as far as I can tell) Euler scheme 
+to update the equations. :UPDATE: I don't think this actually works.  She generates a random variable and then does regular Euler.  She's not actually 
+doing a SDE solver.  
+
+1:30 Looking at the shift work data, I plotted gamma vs time and I plotted sleep state.  In almost every long wake episode, gamma goes up substantially, but 
+does not continue going up as long as the rat is awake.  It goes up and then turns off.  One time there was extended wake and gamma did not go up.  Active wake
+vs. quiet wake may be important here.  This seems to be at odds with what the grant proposal and Janne's beta paper say. 
+
+:TODO: Thursday:  try to figure out how the beta paper jives with what I'm seeing for gamma activity in shift work data.  Maybe try to find the actual 
+.txt files that were used in the beta paper.  
+ - try sleep depriving Costa model to see how everything changes: delta power, gamma, etc.  
+ - keep reading Sorg/Wisor R01 to think of other modeling ideas.  It may be better to avoid EEG power measures and just 
+   focus on sleep architecture?  
+
+* Thursday, June 28, 2018
+  I think I made a little progress on understanding the results in the beta paper.  I plotted gamma activity over the course of the entire recording
+  for the whisking study (FS1\Jonathan Data\LactateWisking FFts andEdfs).  Here is what I think explains the plots showing gamma going down 
+  during the 6 recovery sessions (between whisking). In fact, if you look at all of the data, gamma goes way up during the whisking and pretty much 
+  stays elevated during the entire session (even between whisking).  What I see is that after a couple of whisking sessions the rat starts to have more NREM
+  sleep between whisking.  During NREMS gamma activity always goes way down.  There is a little QW mixed in with the NREMS, but the gamma activity is so low 
+  because of the NREMS that it barely rises during QW.  NREMS is dragging it lower as the whisking continues.  This explains why gamma power gets lower 
+  with successive whisking sessions (and would probably happen during SD too).  So it isn't that gamma power generally decreases with SD or whisking, but that
+  NREMS between sessions increases and that drives down gamma activity.  Check how this fits with grant proposal.  
+
+  - I looked at all 22 recordings and 20 out of 22 followed this pattern.  Two files (7 and 8) actually showed completely opposite dynamics.  gammma was high during SWS 
+  and low during all types of wakefulness.  I'm not sure what happened with those two files.  
+
+  Statement from grant:  (first paragraph of second page)  "Our published data indicate that protracted wakefulness, a known trigger of oxidative stress in the 
+  brain parenchyma [13,14] precipitates a reduction in gamma activity"  I need to think about this.  I'm not sure it is true.  I think protracted wake precipitates 
+  more SWS between sessions and SWS substantially lowers gamma activity.  Enforced wakefulness (whisking, handling, etc) actually causes a shart rise in gamma activity. Being awake actually causes gamma to increase  (look at whisking sessions, gamma always goes up) 
+
+  The pattern of high gamma during wake and low gamma during SWS was true for all recordings except for recordings 7 and 8 where the complete opposite was true: 
+  when gamma when up the state was SWS, it went down during whisking.  
+
+  * Friday, June 29, 2018
+  One of the most striking patterns in these data is the fact that whenever gamma is low the mouse is in SWS and mostly true the other way:  if in SWS, gamma is low.  
+
+* Monday, July 2, 2018
+ I talked with Jonathan about gamma power and models.  He was encouraged by the output of the Costa model in terms of spectral power.  He said it isn't bad that 
+ power in delta, alpha and beta all go up during SWS.  It's just that delta power is much higher than the others.  
+ Normalize the power in each frequency band to the percentage of total power.  OR I could keep track of the ratios of gamma to delta for instance.  
+ Jonathan drew a sketch of power vs frequency for wake, REMS and SWS and SWS has a very large and broad peak.  Larger than W or REMS. There is a lot of power 
+ in SWS.  
+ :TODO1: Check gamma in Costa model. We expect it to go down in SWS relative to wake.  
+ :TODO2: Normalize power in each frequency band as a percentage of total power.  Check on how to normalize.  
+ :TODO3:  Make a spectrogram of power vs frequency for the output of the Costa model for each of the 3 states.  Make sure it looks roughly like what Jonathan 
+ drew for me.  :UPDATE:  I did this and the plots look funny.  For SWS and Wake there is a peak around 2 Hz, for REMS no peaks.  
+
+:NOTE:  I will need to run Costa model with smaller time step. Currently dt = 0.01 seconds which is 100 Hz which means I can only resolve frequencies up to 50 Hz.
+This will mean that simulations are significantly slower.  
+
+
+* Tuesday, July 3, 2018
+The fastest way to run the Costa model (in code that I wrote in Matlab) is to use sde_euler in matlab in windows.  It is faster than sde_solver that I wrote, but 
+that was comparing equal time step sizes.  Since sde_solver should be more accurate, I could probably take a larger step size.  But remember that my step size
+may be limited by the frequency range that we want to capture.  If we need to resolve frequencies up to 100 Hz we need to be sampling at at least 200 Hz which 
+means a time step size of 0.005 seconds which is 5 ms.  
+
+:Question:  Should I filter the output of the model to do a high-pass filter at 0.5 Hz?  Low-pass filter too?  
+
+:TODO:  try using periodogram and pwelch to make spectral plots of data from a rodent recording.  Use JW code to merge txt and edf. :DONE:
+
+periodogram.m seems to be very sensitive to the third argument. Figure out what to use here. Use length of signal.  Seems best.   
+
+* Thursday, July 5, 2018
+I'm comparing periodogram and pwelch to make spectral plots of experimental data for each sleep state.  Code is in check_spectral_output.m.  Periodogram
+seems to be better:  more defined peaks, and it runs much faster.  Think about changing call to pwelch to periodogram in autoscoring code.  It may help.
+:check: periodogram seems to be normalizing somehow.  When I plot all three states on the same graph, REMS has much more power than the other two, but even 
+more than when I do all the data and don't separate states.  The second variable returned by Periodogram is the frequency which is normalized.  It seems to be 
+normalizing by signal length which would shorter for the REMS case than the others because there are fewer REMS episodes than the others.  
+How should I plot all three on the same graph?  I could multiply each by the number of epochs in that state.  THIS is wrong.  It normalized the frequency 
+vector which I plot along the horizontal axis, not the vertical dimension.  
+
+Well, the normalization issue aside, the periodogram seems to be working on the experimental data and it gives me what I expect:  SWS has a peak around 
+1-4 Hz and wake and REMS both peak around 8 or 9 Hz.  
+
+Costa model output:  generated from running his code (saved in Data directory):  Making the same periodogram plots required the use of a semilogy plot
+since there was a huge amount of power near 0 Hz. On a semilogy plot, during wakefulness there is a bump near 2 Hz.  Why?  The other two stages
+don't show any pattern, just gradually decreasing power as frequency increases.  No peaks.  
+
+pwelch is showing me the same strange peak around 2 Hz.  
+
+:TODO: Run my version of Costa's model:  either run_costa_model_using_sde_solver or run_costa_model_using_sde_euler and make sure that periodogram looks the same. 
+If so, try changing dphi to see if that is what is setting the peak of the power at 2 Hz.  
+
+:IDEA: maybe Costa did really run everything in ms and not seconds.  A time step of 0.1 ms is what the manuscript says.  BUT, his output has 8640000 samples 
+for 24 hours which would be 0.01 seconds which is 10 ms.  Looks like Costa really does set dt to 0.1 ms.  Is he downsampling at some point? 
+I figured this out.  In Cortex_SR_mex.cpp he runs the code with a time step of 0.1 ms, but he uses a parameter called red to only keep 1 out of every 100 samples. 
+This is how it is run with a dt = 0.1 ms which is 10,000 steps per second, which is 10,000 Hz, but the output I get only looks like 100Hz if you look at number 
+of samples in a 24 hour recording.  
+
+Try to think of ways that I can write data to disk and then clear variables or something to save memory.     
+
+:TRY:  1) Since Costa was running the code with dt=0.1 ms but only keeping 1 out of every 100 points it's as if we were running it with a much larger timestamp. 
+          To really understand the spectral power in the output of his model, I need to run it with a relatively small time step and keep all the data.  
+          Not throwing away data made MATLAB crash right away.  I tried running my version of it only for one hour of output and it said it ran out of Java
+          heap space.  
+        2) To address this:  try to chunk the data:  run the simulation for a small number of time steps and then save to disk, then erase.  
+        3) Keep going on the GPU version of the code.  If it can really speed up simulation, it will be worth it.  
+
+
+* Monday, July 9, 2018
+I read the Ferguson and Skinner 2013 Frontiers paper more carefully and it could be helpful, but I think I would run into the same problems as the Costa model:
+computational resources. They used BRIAN, but they also use a supercomputer.  They didn't have to include noise, because they simulated 500 cells.  Euler method. 
+Her simulations were all for in vitro not in vivo.  Also in CA1. 
+
+Any approach like Costa or Skinner seems like it will be unfeasible.  It takes many hours to do one run and I can't store the output variable for the EEG in 
+one variable.  Only one hour of simulated data requires 2 chunks and 3.5G filesize in MATLAB.  When each run takes so much time and space, I can't imagine tuning 
+parameters or making figures.  
+Keep trying the GPU before I completely rule this out.  I spent some time on this today and it is still not looking promising.  Much slower than CPU.  I wrote a tiny
+test and GPU is only faster if multiplying a relatively large matrix (500x500) 100s of times.  Making 100 calls to F Costa was a factor of 200 slower on the GPU 
+compared to the CPU.  Perhaps bsxfun or something could make it fast, but I'm taking a break from it now.  
+
+
+* Tuesday, July 10, 2018
+Why can an edf file containing 3 or 4 signals, all sampled at 400 Hz for 48 hours be loaded into Matlab, but I can't run a simulation and 
+store data for one variable at 100 Hz for more than a couple of hours?  What is the difference?  
+A 26 hour edf is only 220 MB and can be loaded into matlab in 20-30 seconds using blockEdfLoad.m.  Once in matlab, the 400 Hz recording with 4 signals
+26 hours only requires 905,200,448 bytes for all signals which is 905 MB.  Each trace has 36,500,000 elements.  The vector representing EEG in the Costa model
+has 8,640,000 elements, butWhy does it require so much more space to set up a simple vector with
+
+I spent quite a bit of time working on the Ferguson model in python and it is still not working. I made some progess, but I don't think it is worth continuing 
+on.  Perhaps I can use some of their approach, but just do it in matlab.  Look up papers that cite Ferguson or other models of Parvalbumin-positive cells.  
+
+* Wednesday, July 11, 2018
+I'm trying to run run_costa_model_using_sde_euler.m with a time step of 1 ms rather than 0.1 ms.  1 ms would still give us roughly up to 500 Hz.  
+
+I ran it once with time step of 10 ms and no noise and C_E, C_G, and C_A and h looked fine, but Vp blew up.  Probably because of too big time step. 
+I'm running it again using time step of 1 ms.  
+
+9:26: I'm running run_costa_model_using_sde_solver.m without noise for 24 hours just to make sure the solver is working correctly.  I should see the 
+patterns of Vm from Costa model without noise:  4 large drops in Vm during the night.  THIS SEEMS TO BE WORKING.  TIME STEP OF 1 MS IS FINE.  
+
+11:24 I wrote another version of the code that only keeps Vm and does not keep any other vectors, just scalars.  Profiling this code showed progressbar.m
+as taking up a lot of time. Remove that from code and put in some comments so I know about how long it will take.   Also a couple of lines in F_Costa.m 
+are pretty slow.  I'm not sure why.  
+
+* Thursday, July 12, 2018
+Just talked with Jonathan:  One idea to deal with the computational complexity:  Just think about the 6 hour segment in Janne's beta paper.  They did 
+repeated Sleep deps and recovery and measured gamma during recovery each time.  I could simply model a short chunk of time (entire recovery or less) 
+and measure gamma activity.  What we need is an input variable, like the homeostat.  The homeostat should be generally rising during these 
+six hours, although it goes down a little during each recovery session.  We could simulate each small chunk of data between sleep deps and measure 
+gamma power.  
+
+:TODO: Run Costa model for a short time with a reasonably small time step and measure power. Compare a wake segment to the same amount of time in wake 
+in a recording.  Do the same with SWS and REMS.  
+The test experimental recording file that I was checking for gamma, delta, etc. was not good.  Most of it was not scored. 
+
+4:30:  Matlab seems to be running super slowly now.  Try R2014 or something.  I don't know why LoadAndMerge is so much slower now.  Everything seems slower. 
+And matlab takes up 22 GB of memory now just to load in an edf and txt file.  Something seems wrong.  
+
+I ran the Costa model using my solver with a time step of 1 ms and made a periodogram using the exact same code that I used for the experimental data.  
+Something is wrong because it is only nonzero at a frequency of 0 Hz.  If I only plot pxxAll(50:end) using fxAll(50:end) for the x-axis, the shape
+and scale of the plot look reasonable.  I noticed that the y-axis was on a scale of hundreds when the real data were on a scale of 10^-6.  
+I think filtering the output of the model to cut out frequencies below 0.5 Hz would be a great idea.  
+
+:TODO: :MONDAY:  think about emailing Marcos, Jonathan, and Alex to sort out who is doing what and my ideas about other NSF grant.  
+
+
+* Monday, July 16, 2018
+I saved the 0.5 Hz High-pass filter as HP in the matlab workspace filter.mat in the directory Wisor_Sorg_R01_oxidation.  I'll need to load it before I can 
+use it, but once I do.
+
+Using the filter I set up, somehow MATLAB is normalizing and detrending the data.  Instead of starting around -60 and gradually rising, it starts near zero and stays 
+there.  The histogram looks better than before, but peak is not matching up with wake from experimental data.  This could be because of detrending?  
+
+One idea: code up how to get gamma power out of experimental EEG signal and make sure that it looks like what I saw when the gamma power was listed in a 
+separate column in the .txt file:  when low it is always SWS, goes up with W or R.  Then I will know the code works for when I have the model working.  
+
+* Tuesday, July 17, 2018
+After filtering the data and adding the trend back in, I'm still seeing a huge spike near 0 Hz in the periodogram.  I thought this was filtered out. 
+
+Detrending is key and is something I want to do.  Without detrending I was getting a huge spike a 0 Hz not matter how I filtered.  The filtered and 
+detrended signal gives me a reasonable-looking periodogram.  
+Some progress:  run_costa_model_using_sde_solver.m run for 10 minutes during wakefulness is now producing a periodogram that looks reasonable.  Also, 
+alpha power is a little higher than delta power, but gamma is a factor of 10^3 smaller than alpha or delta.  
+Try running the model for a segment of NREM sleep to run the same analysis.  
+I may want to separate the code for running the simulation from the code for analyzing it.  I'm doing a lot of copying and pasting from run_costa_model_using_sde_solver.m
+because I don't want to re-run the simulation. 
+Figure out which I.C. I should use to simulate a NREM segment.  
