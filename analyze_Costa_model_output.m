@@ -6,7 +6,22 @@ function analyze_Costa_model_output(data_file)
 % 
 
 % first load the "data": the output of the simulation
+disp('Loading the data file....')
 load(data_file);
+disp('Done loading!')
+
+
+% Determine state from the filename
+if ~isempty(strfind(data_file,'Wake')) | ~isempty(strfind(data_file,'wake'))
+	state = 'Wake';
+elseif ~isempty(strfind(data_file,'SWS'))
+	state = 'SWS';
+elseif ~isempty(strfind(data_file,'REMS')) | ~isempty(strfind(data_file,'REM'))
+	state = 'REMS';
+else
+	error('Unrecognized sleep state in file name');
+end
+
 
 
 % First filter the data so frequencies below 0.5 Hz are filtered out (High-pass)
@@ -20,7 +35,7 @@ data_filtered = filter(HP_butter,data);		 % SLOW if using FIR filter.  Try butte
 % remove first 6 seconds of data because of edge effect introduced by filtering
 data_filtered = data_filtered(20000:end);
 t 			  = t(20000:end);
-
+Y 			  = Y(:,20000:end);
 
 
 
@@ -47,13 +62,14 @@ epoch.alpha = sum(spectra_new(alphaIdx,:),1);
 
 
 mean(epoch.delta)
+whos Y
 % now plot results
 figure
-plot(t,Y(4,:),'g',t,Y(5,:),'r',t,Y(6,:),'b',t,Y(7,:),'y')  % C_E, C_G, C_A, and h 
+plot(t,Y(4,:),'g',t,Y(5,:),'r',t,Y(6,:),'b',t,Y(7,:),'MarkerFaceColor',[1 0.4 0])  % C_E, C_G, C_A, and h 
 
 figure
 plot(t,data_filtered)   % V_p, a proxy for the EEG signal.  
-title('Model output EEG signal')
+title(['Model output EEG signal ', state])
 ax=gca;
 %ax.YTick = [-90 -60 -30];
 
@@ -64,6 +80,7 @@ plot(epoch.gamma,'g')
 plot(epoch.alpha,'r')
 legend('delta power','gamma power','alpha power')
 hold off
+title(state)
 
 
 
@@ -76,7 +93,7 @@ window = hamming(length(data_filtered));
 [pxxAll,fxAll] = periodogram(data_filtered,window,length(data_filtered),freq,'power');
 figure
 plot(fxAll,pxxAll)
-title('Simulation data all states using periodogram.  Should be all wakefulness')
+title(['Simulation data all states using periodogram.  Should be all ', state])
 ax=gca;
 ax.XLim = [0 100];
 

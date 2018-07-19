@@ -44,15 +44,36 @@ if strcmp(state,'wake') | strcmp(state,'Wake')
 			  1.33; ...  % g_KNa
 			  7];        % sigma_p
 elseif strcmp(state,'SWS')
-	Y(:,1) = [6;    ...  % F_W
-			  1e-3; ...  % F_N
+	Y(:,1) = [4.7;    ...  % F_W
+			  2; ...  % F_N
 			  1e-3; ...  % F_R
-			  0.8;  ...  % C_E
-			  1e-3; ...  % C_G
+			  0.6;  ...  % C_E
+			  0.6;  ...  % C_G
 			  1e-3; ...  % C_A
-			  0.5;  ...  % h
-			  -66;  ...  % V_p
-			  -64;  ...  % V_i
+			  0.9;  ...  % h
+			  -45;  ...  % V_p
+			  -50;  ...  % V_i
+			  0;    ...  % s_ep
+			  0;    ...  % s_ei
+			  0;    ...  % s_gp
+			  0;    ...  % s_gi
+			  0;    ...  % x_ep (first derivative of s_ep)
+			  0;    ...  % x_ei (first derivative of s_ei)
+			  0;    ...  % x_gp (first derivative of s_gp)
+			  0;    ...  % x_gi (first derivative of s_gi)
+			  28;   ...  % [Na]
+			  2;  ...  % g_KNa
+			  6.5];        % sigma_p
+elseif strcmp(state,'REMS') | strcmp(state,'REM')
+	Y(:,1) = [0.93;    ...  % F_W
+			  5; ...  % F_N
+			  4.9; ...  % F_R
+			  0.18;  ...  % C_E
+			  0.848; ...  % C_G
+			  0.985; ...  % C_A
+			  0.705;  ...  % h
+			  -55;  ...  % V_p
+			  -53;  ...  % V_i
 			  0;    ...  % s_ep
 			  0;    ...  % s_ei
 			  0;    ...  % s_gp
@@ -62,29 +83,8 @@ elseif strcmp(state,'SWS')
 			  0;    ...  % x_gp (first derivative of s_gp)
 			  0;    ...  % x_gi (first derivative of s_gi)
 			  9.5;  ...  % [Na]
-			  1.33; ...  % g_KNa
-			  7];        % sigma_p
-elseif strcmp(state,'REMS')
-	Y(:,1) = [6;    ...  % F_W
-			  1e-3; ...  % F_N
-			  1e-3; ...  % F_R
-			  0.8;  ...  % C_E
-			  1e-3; ...  % C_G
-			  1e-3; ...  % C_A
-			  0.5;  ...  % h
-			  -66;  ...  % V_p
-			  -64;  ...  % V_i
-			  0;    ...  % s_ep
-			  0;    ...  % s_ei
-			  0;    ...  % s_gp
-			  0;    ...  % s_gi
-			  0;    ...  % x_ep (first derivative of s_ep)
-			  0;    ...  % x_ei (first derivative of s_ei)
-			  0;    ...  % x_gp (first derivative of s_gp)
-			  0;    ...  % x_gi (first derivative of s_gi)
-			  9.5;  ...  % [Na]
-			  1.33; ...  % g_KNa
-			  7];        % sigma_p
+			  0.2; ...  % g_KNa
+			  6.26];        % sigma_p
 end
 
 
@@ -121,3 +121,10 @@ end
 % is labeled using the time and day the simulation was run,
 % and the sleep state.  
 filename = strcat('Model_Output_',date,'__',state,'.mat')
+save(filename)
+
+
+
+% TESTING: make a quick plot of V_p
+figure
+plot(t,Y(8,:))

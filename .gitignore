@@ -10,6 +10,10 @@ other_models_code/
 ######################################
 *.mat
 
+# My notes to self, written in .org format #
+############################################
+*.org
+
 
 
 # OS generated files #
