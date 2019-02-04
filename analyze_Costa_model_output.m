@@ -1,14 +1,19 @@
-function analyze_Costa_model_output(data_file)
-% USAGE: analyze_Costa_model_output(data_file)
+function analyze_Costa_model_output(data_file,filter_type)
+% USAGE: analyze_Costa_model_output(data_file,filter)
 %
 % where data_file is a .mat file containing the output
 % of the function run_costa_model_and_save_output.m 
 % 
+% filter_type:   'FIR'  			for HighPass FIR filter
+%			'Butterworth' 	for Butterworth high pass filter
+%			'Elliptic'		for Elliptic high pass filter (seemed good for 10000 Hz data)
 
 % first load the "data": the output of the simulation
 disp('Loading the data file....')
 load(data_file);
 disp('Done loading!')
+
+
 
 
 % Determine state from the filename
@@ -25,24 +30,44 @@ end
 
 
 % First filter the data so frequencies below 0.5 Hz are filtered out (High-pass)
-load('filter.mat','HP');   					% this is the first HighPass filter FIR I designed using Filter Desing and Analysis App
-load('butterworth_HP_filter','HP_butter')	% Butterworth high pass filter
-Y             = Y(:,6001:end);  			% First remove the transient from all signals (first 6 seconds)
-t 			  = t(6001:end);
+
+
+
+
+if strcmp(state,'Wake') | strcmp(state,'wake')
+	Y             = Y(:,6001:end);  			% First remove the transient from all signals (first 6 seconds)
+	t 			  = t(6001:end);
+end 
+
 data 		  = Y(8,:);          			% Y(8,:) is V_p, a proxy for EEG signal
-data_filtered = filter(HP_butter,data);		 % SLOW if using FIR filter.  Try butterworth too. filtering the data using filter.m detrends it.  Just FYI
+
+if strcmp(filter_type,'FIR')
+	load('filter.mat','HP');   					% this is the first HighPass filter FIR I designed using Filter Desing and Analysis App
+	data_filtered = filter(HP,data);
+elseif strcmp(filter_type,'Butterworth') | strcmp(filter_type,'butterworth')
+	load('butterworth_HP_filter.mat','HP_butter');	% Butterworth high pass filter
+	data_filtered = filter(HP_butter,data);
+elseif strcmp(filter_type,'Elliptic') | strcmp(filter_type,'elliptic') | strcmp(filter_type,'Elliptical')  % ONLY FOR SAMPLING RATE OF 10000 HZ!
+	load('Elliptic_HP_filter_10000Hz_sampling.mat','HP_10000Hz_sampling'); % Elliptic high pass filter.  This is the only one I could make work for 
+	data_filtered = filter(HP_10000Hz_sampling,data);
+else
+	error('Incorrect input for ''filter''. Choices are FIR, Butterworth, or Elliptic')
+end
+
+
+		 % SLOW if using FIR filter.  Try butterworth too. filtering the data using filter.m detrends it.  Just FYI
    
 % remove first 6 seconds of data because of edge effect introduced by filtering
 data_filtered = data_filtered(20000:end);
 t 			  = t(20000:end);
 Y 			  = Y(:,20000:end);
 
-
+dt = t(2)-t(1)   % time step size in ms
 
 
 % now compute the power in various frequency bands
 epoch_length = 10;  % in seconds
-freq    	 = 1000/dt;  %10000;  % in Hz
+freq    	 = 1000/dt;  %10000;  % in Hz  the 1000 is a conversion factor since time step size is in units of ms
 N            = fix(freq*epoch_length);  % number of data points in each epoch
 raw_EEG = data_filtered;
 raw_EEG_truncated = raw_EEG(1:N*floor(numel(raw_EEG)/N));
@@ -61,8 +86,6 @@ epoch.gamma = sum(spectra_new(gammaIdx,:),1);
 epoch.alpha = sum(spectra_new(alphaIdx,:),1);
 
 
-mean(epoch.delta)
-whos Y
 % now plot results
 figure
 plot(t,Y(4,:),'g',t,Y(5,:),'r',t,Y(6,:),'b',t,Y(7,:),'MarkerFaceColor',[1 0.4 0])  % C_E, C_G, C_A, and h 

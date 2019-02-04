@@ -14,6 +14,16 @@ function run_costa_model_and_save_output(state)
 % Matlab
 %addpath \\FS1\WisorData\MATLAB\Rempe\Matlab_utilities
 
+% First set up the time vector
+dt = 0.1;  % ms  was 0.1
+%t=0:dt:86400000;  %86400000 is 24 hours in ms
+t=0:dt:600000;  % 3600000 is one hour in ms, 600000 is 10 minutes
+n=length(t)-1;
+
+% Now allocate space for Y so it doesn't have to resize every time step
+Y = zeros(20,length(t));
+
+
 % noise parameters from the Costa model
 gamma_e	= 70E-3;
 dphi	= 2;
@@ -23,14 +33,14 @@ v = [zeros(13,1); gamma_e^2*dphi;  gamma_e^2*dphi; zeros(5,1)];  % these are the
 
 % Initial Conditions
 if strcmp(state,'wake') | strcmp(state,'Wake')
-	Y(:,1) = [6;    ...  % F_W
+	Y(:,1) = [4;    ...  % F_W was 6
 			  1e-3; ...  % F_N
 			  1e-3; ...  % F_R
 			  0.8;  ...  % C_E
 			  1e-3; ...  % C_G
 			  1e-3; ...  % C_A
 			  0.5;  ...  % h
-			  -66;  ...  % V_p
+			  -43;  ...  % V_p was -66
 			  -64;  ...  % V_i
 			  0;    ...  % s_ep
 			  0;    ...  % s_ei
@@ -88,11 +98,6 @@ elseif strcmp(state,'REMS') | strcmp(state,'REM')
 end
 
 
-dt = 1;  % ms  was 0.1
-%t=0:dt:86400000;  %86400000 is 24 hours in ms
-t=0:dt:600000;  % 3600000 is one hour in ms, 600000 is 10 minutes
-n=length(t)-1;
-
 
 tic
 % Start Chang method
@@ -121,7 +126,7 @@ end
 % is labeled using the time and day the simulation was run,
 % and the sleep state.  
 filename = strcat('Model_Output_',date,'__',state,'.mat')
-save(filename)
+save(filename,'-v7.3')
 
 
 

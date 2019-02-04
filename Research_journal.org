@@ -320,3 +320,399 @@ Try running the model for a segment of NREM sleep to run the same analysis.
 I may want to separate the code for running the simulation from the code for analyzing it.  I'm doing a lot of copying and pasting from run_costa_model_using_sde_solver.m
 because I don't want to re-run the simulation. 
 Figure out which I.C. I should use to simulate a NREM segment.  
+
+
+* Wednesday, July 18, 2018
+I have set up code to run the Costa model and a separate function to plot the output.  I am currently working on picking parameters for NREMS.  The 
+first stab at it was close, but there were spikes similar to Figure 8 N2 panel, but the spikes were much larger (down to -120 mV).  If they are still 
+present, see if the time step size is the issue:  try making dt=0.1 ms again, instead of 1 ms.  
+
+Also, I may want to run the simulation for 24 hours using dt = 1 ms to see the correct output for all variables at all states.  This would help me really pick
+accurate initial conditions for each state.  It may work (just take a long time) now that I have deleted that one huge file.  
+
+The most recent run of Costa model for NREMS has an average Vp of around -52 mV rather than Costa's -60.  Also the large spikes are still there.  Try a smaller time 
+step size.  
+With the smaller time step size, the output was less noisy, but the spikes were still there.  If I zoom in on a 30-second segment it looks much like Figure 8 
+in Costa, except that the average voltage is higher: -54 mV rather than -60 mV.  
+I'm running it again with step size of 1 ms again to compare the outputs.   :DOTHIS:
+4:45:  The REMS output looks pretty good.  Much like Costa's figure.  
+
+* Thursday, July 19, 2018
+The SWS output doesn't have any power below 4 Hz.  Check to see if it's the filter.  Check the other states too. REMS looks perfect in terms of the 
+cutoff frequency.  Maybe issue is with the timestep.   SWS with dt=1 ms is fine.  The problem is with dt=0.1 because the filter assumes that dt=1.  
+
+10:46 So far so good:  during wakefulness the periodogram has a broad peak with quite a bit of power between 5-10 Hz and alpha power is higher than
+delta power.  During SWS the peak is much more narrow with a peak around near 0.5 Hz but a lot of power between 0.5 Hz and 2 Hz.  Delta power 
+is higher than alpha power during SWS.  
+The REMS data seems to have captured a transition to SWS so I should cut if off before I analyze it.  
+One problem:  gamma power seems to be lower during wakefulness than it is during SWS. This is exactly opposite of what I expect.  Also, gamma power is much lower 
+than delta or alpha power anytime.  I did a second run of SWS and it was just the same as the first.  Not a lot of variation from run to run.  
+
+It would be nice to run a 24 hour simulation and plot gamma power for the entire time to see if gamma changes with sleep state sometimes or not.  
+
+I'm checking the Costa output (from his C++ ).  This didn't help.  gamma is exactly zero everywhere.  This is probably because he threw away so much data that 
+I can't get any meaningful spectral information out of it.  
+Gamma power seems to be dependent on time step size.  Using the SWS data with dt = 0.1 ms reduced gamma power from about 4e-3 to 2e-3. 
+Re-run the wake and REMS cases with dt=0.1 ms and use the elliptical filter. 
+Run wake simulation for a long time so it really settles down to an equilibrium.  Then use the values at the end as I.C. for Wake instead of doing 
+a transient and throwing out data.  :MAYBE: I could check Costa's output from his C++ code for this.  
+
+* Monday, July 30, 2018
+The long simulation I started before the week off did not save the variable Y (containing all the output data) because it was too large.  I have changed 
+the script to use the -v7.3 flag so this doesn't happen again.  I managed to get the data just for the 8th variable in Y, Vp, by extracting it from the figure. 
+This has been saved as Y in the .mat file Model_Output_20_Jul-2018__Wake.mat.  
+Run analyze_Costa_model_output.m on these data to check gamma power.  
+However, this will not help me in terms of choosing good initial conditions for wake.  
+
+:IDEA: run my Neurobiology of Sleep... model of rodent sleep for the protocol done in the beta paper (Figure 1 in the grant) to get reasonable rodent 
+sleep state data to work with.  This will be used as input to the model based on Costa et al.  Run the Neurobio simulations for as long as the experiments 
+went.  The polyphasic nature of sleep may be important.  
+
+2:30 When I changed dt from 1 ms to 0.1 ms the gamma power during wake went from around 2e-3 to 1e-3.  So gamma power is reduced when the time step 
+size is reduced, regardless of sleep state.  Perhaps it is just important to be consistent in the time step. 
+CHECK: does gamma power change as expected from SWS to Wake?   NO.  Using dt =0.1 ms gamma is higher during SWS than it is during Wake.  This is 
+exactly backwards.  
+
+Things to try: how sensitive is gamma to AMPA and GABA parameters?  If I change either of those, does this change the pattern of Gamma being higher during
+SWS compared to wake?  
+
+Think about other gamma models: with many cells.  See if any of these models generate reasonable gamma power. Check Gamma review again to see if any 
+of these simpler models could work for us.   
+
+* Wednesday, August 1, 2018
+I just met with Jonathan to show him the gamma output of the Costa model and how it is opposite of what we want.  He suggested that I figure out exactly 
+how SWA is generated in the model.  What drives it to increase during SWS?  This may be a clue about something that can be modified so gamma is 
+lower during SWS as compared to wakefulness.  
+Also, he suggested coding up the Ferguson/Skinner model with just a few cells rather than 500 like they do.  Perhaps only a few will be good enough.  
+
+:TODO: check spectral power in specifically N3.  This is where the solution is close to Hopf and may give better power output.  
+
+* Tuesday, August 7, 2018
+I'm working on the Ferguson/Skinner model.  I have some code running on my laptop using a python 3.6 environment set up using conda.  In 
+this environment, it already knows about Brian2 (but not Brian).  The code on ModelDB for the Ferguson Frontiers paper only simulated one cell,
+but I found code for the Ferguson 2015 J Comp Neuro paper that uses the same equations and has code for a network.  However, it was for Brian,
+not Brian2.  
+1:38:  I managed to get this code running using Brian2. 
+:TODO: put the relevant code from PYR_network_model.py into PV_model.py to simulate a network. 
+       make sure I get results like her Frontiers paper.  
+       export the data so I can load it in MATLAB
+       Figure out and code up 
+
+       It's not clear how to get an EEG-like signal out of Ferguson model output.  Do I do a weighted sum of synaptic currents like Jonathan talked
+       about where cells are weighted based on location?  The frequencies shown in her paper are much higher than we are interested in.
+       It does not look like they included noise in their simulations.  Perhaps I should.  
+       One ide for EEG output:  Rulkov et al J Comp Neuro 2004 used the average of 100 cells in the middle of their 2D network to represent an LFP.  
+       I could try something like this.  Perhaps average over all cells, just weigh the contribution of cells near the center (near electrode)
+
+
+* Wednesday, August 8, 2018
+I worked for a while on ADD_SCORING_TO_ZDB, but I couldn't seem to find a .zdb that had scoring.  Eventually I want to make one program that 
+does the autoscoring and writes the new .zdb file, rather than two separate scripts.  
+
+
+* Monday, August 13, 2018
+Looking at the Ferguson model this morning.  It is running on my laptop with 1000 cells and 1.5 seconds of simulation takes about 30 seconds of CPU time. 
+:TODO: for this model:  
+          1) Can I run this in linux, and if so, is it faster? :ANSWER: runs in linux, but takes twice the time to run.  
+          2) How to I model sleep state, or even GABA levels in this model? It does not seem to be as straight-forward as the Costa model.
+          3)  
+
+Looking at the Ferguson 2013 paper:  it looks like maybe in figure 6 panel A we could increase GABA (gsyn) which may dramatically increase 
+network synchrony.  This increase in network synchrony may also give a decrease in gamma power.  ?? 
+
+
+* Wednesday, August 15, 2018
+I met Chris Fink for lunch today.  He is doing modeling of LFP using NEURON.  He says that you can't model LFP using a weighted average of lots of cells.
+You need to do multi-compartment cells (he uses 3 compartments per cell) and hundreds of cells.  I did ask him if a network of cells is 
+firing at a particular frequency, would that frequency show up in the LFP (or EEG)?  He said that it would, and the distortion due to tissue would be minimal. 
+
+Maybe keep looking at the Izhikevich model code a bit.  It may be a good way to go.  Modify it for the Ferguson model.  Then check how gamma power changes with 
+changing gsyn.  We expect an increase in GABA to cause a reduction in gamma power.   
+
+Sould I completely give up on the Costa model?  The gamma activity was not promising.  Higher during SWS than during wake. I'm not sure 
+how I could back out any sort of mechanism.  
+
+Keep going trying to modify the Izhikevich model to use Ferguson's equations. I think this is promising.  
+
+* Tuesday, August 21, 2018
+Almost have the Ferguson model working in MATLAB as a modified Izhikevich.  However, the synaptic stuff doesn't seem to work since disconnecting 
+all the cells from one another seems to have no effect on model output.  
+
+Izhevich model is giving spikes that go way too high.  I could clip them off at 30mV like it looks like he did, but the Ferguson model doesn't seem
+to clip them off unless it is done under the hood in Brian...
+
+* Wednesday, August 22, 2018
+Time step size is a big issue.  When I changed the code to use dt=0.01 ms instead of 1 ms, cell 20 spiked to around 0-10 mV and reset to -70 mV.  No really 
+large spikes to 3000 mV.  Keep checking to see how small I need to go.  :TRY: Also, maybe try using ode45 or something.  It may actually be faster if it can use adaptive time-stepping.
+The problem is that now I need to think more about how to do the T for one ms.  
+
+12:54: I tried a timestep of 0.001 ms and the spike peaks are a bit shorter (near 0 like Ferguson), but the frequency is exactly the same.  I'm going to stick with 0.01 ms from now on.
+
+Maybe RK4 would allow for a larger timestep....
+
+The firing rate of my cell using Izhikevich_modified is higher than what I get out of PV_model.py (I get about 4 spikes every 100 ms and she gets about 2.  In 1 second I get about 48 spikes,
+she gets about 24 spikes)
+NOthing seems to change when I make gsyn=0.  I'm getting no input from synapses. 
+
+I'm working on getting the frequency correct for one cell, so I turned off all connectivity.  I changed the initial condition for u to be zero instead of b*v like Izhevich had.  Also, 
+I changed d from 0.1 to 10.  The graph of u vs time did not look like figure 2 in Izhevich's paper. 
+
+:NOTE:  The network without connectivity is spiking at a faster frequency than Ferguson, but let's leave it for now.  I will probably need to adjust parameters anyway to match our 
+PV cell data.  Start working on getting the connectivity issues sorted out.  
+
+:IDEA:  Isyn should not be reset to 0 each time step.  It should be added to every cell every timestep.  s is the only variable that needs to worry about what has happened 
+pre-synaptically.   I fixed this. 
+Why is s not going above 0.06?  It saturates there even though I turned off the s_too_high code.  alpha/(alpha+beta) = 0.869 it is not making it to this value. :FIXED: now it is. 
+T seems to be behaving correctly.  Why isn't s continuing to grow?  
+I may also need to make Isyn a matrix, not a vector.  
+:FIXEDONEISSUE: the equation for s was missing a parenthesis.  It is correct now.  keep testing.  Plot of s vs time looks much better.  
+
+* Thursday, August 23, 2018
+Code up the phi coherence measure in Ferguson paper.  Test it on my Izhikevich output.  
+
+I'm not getting a lot of noise in my simulation output.  with gsyn=0, changing Iapp to a constant makes almost no difference.  
+
+10:26: In python, changing Iapp to be a constant rather than normally distributed made the output look much like my output using Iapp constant or random (very coherent 
+firing across all cells)  Why?  
+10:33 I confirmed this.  Also, with Iapp being constant, the firing frequency matches between python and matlab.  
+
+3:00 I installed HNN, a new simulator for generating EEG-like activity.  It may be promising, but I feel that there is too much going on under the hood for it to be useful.  
+How would I add anything like sleep state?  Sleep deprivation?   
+
+* Friday, August 24, 2018
+I just met with Jonathan.  Let's keep going with the Ferguson approach.  I think it has promise.  Jonathan said that even though their paper was for CA1, we can 
+probably just write a paragraph in the discussion talking about medial prefrontal cortex vs hippocampus.  We are studying the medial prefrontal cortex.  
+
+I think it would be worth talking to Chris Fink about the idea of synapses and equations 1 and 2.  If I need to modify the params a bit from Ferguson's paper I think that 
+is fine.  I am basically starting with the Izhevich model anyway so I'm allowed to modify it a bit to suit our needs.  
+
+
+* Thursday, September 6, 2018
+I talked with Jonathan today about grant ideas, specifically Darpa.  He pitched an idea to me that he has been thinking about for a long time.  The idea is that with EEG data, 
+pupil data, and some measure of skin stress level we can determine when someone is going into a microsleep or arousal lapse.  The idea being that if two soldiers are together, 
+and one starts to lapse into microsleep, information should be sent from one soldier to the other.  
+Here is a proof of concept that we would need:  Show a subject moving bars like Kit shows the mice.  Show them for 30 minutes.  After those 30 minutes cells in the subjects 
+visual cortex show a preference for the stimulus moving at that particular angle.  However, if a person is drowsy, you can show them the same stimulus for the same time and their visual
+cortex does not develop the same preference?  Look up the OSRP that is talked about in the Wisor/Sorg grant.  This sounds like sleep-dependent plasticity.  Is the point of the 
+proof of concept to show that we can tell when the subject is sleepy?  
+Two people in the same room seeing the same stimulus, one is rested and one is sleepy.  The rested subject would show aquisition of memory, exhibited how?  The sleepy 
+subject would not show the learning?    
+I need to draft an email to Hans to see if he would be interested in at least allowing us to do the human experiments.  Also, I need to find an appropriate Darpa grant and include 
+the link in the email. 
+
+* Thursday, September 13, 2018
+  I met with Chris Fink this morning at GU to talk about connecting cells in a manner similar to Ferguson et al.  He said that for cells receiving synaptic input from 
+  more than one cell, I could add terms on.  For instance, if cell 2 receives input from cells 4 and 3, set up a variable s23 and s24 or something and add two terms onto
+  the equation for cell 2: gsyn*s23*(v2-Esyn) + gsyn*s24*(v2-Esyn).  This is equivalent to: gsyn*(s23+s24)*(v2-Esyn).  This seems to make sense.  Also, I should probably 
+  cap the s term.  I know each variable s is capped, but should I also put a cap on the sum?  This may be big if a cell is receiving synaptic input from many other cells. 
+
+  Also, I should look in Dayan and Abbot.  I'm sure they have something related to this.  Chris also talked about another way to do it, where if 2 cells receive input
+  from the same presynaptic cell, the s variables must be the same, so I could think of this s as being presynaptic, not post-synaptic.  
+
+  I think the way I would prefer to proceed is the following:  Once I've determined connectivity, set up a connectivity matrix S so S(i,j) has a non-zero 
+  entry if cell i is connected to cell j (i is presynaptic, j is postsynaptic).  Wait:  it doesn't need to be a matrix, it could just be a vector, but some 
+  entries will not be 
+
+  :IDEA: Perhaps is one cell is post-synaptic to multiple other cells, I should still use just one s variable for that cell.  (s is post-synaptic, after all).
+  The way that multiple cells can come into the mix, is through [T].  T becomes 1 when ANY of the presynaptic cells fires.  This may be strange when more than 
+  one presynaptic cells fire within one ms of each other, but I suppose that could be saturation too. 
+
+  looking at the code, I think I may not need the code in lines 74-80.  CORRECTION: I do need them, but I have modified them.  Also, this code only seems to update 
+  Isyn for cells that had a pre-syn cell fire, but really s (and Isyn) need to be updated every step for every cell regardless of whether the presynpatic cell 
+  fired or not.  the only difference between having a presynpatic cell fire or not is in s.  This was because not every cell is even connected to a presynaptic
+  cell.  If not connected, then it should now h
+
+  11:37 I coded up the new way to doing the s variable,  but there still seems to be an awful lot of synchrony.  All cells fire together with a bit of noise.  
+
+  * Thursday, September 27, 2018
+  I'm trying to simplify down to a small network to make sure I'm doing what I expect.  I did check that on average each pre-synaptic cell is connected
+  to about 60 post-synaptic cells.  This matches the paper.  
+
+  10:17: I simplified the network and only had one connection: cell 1 is presynaptic to cell 5.  I turned off all the Iapp, except to cell 1.  I wanted to test 
+  if the one synapse can make cell 5 fire even if cell 5 is getting no external input, just the synaptic input from cell 1.  Only cell 1 fired, and only because
+  of Iapp.  Cell 5 never fired, even though it is connected synaptically to cell 1.  Why not?  
+
+  When a pre-syn cell fires, the post-syn cell turns on the s variable, but it seems to stay constant, in this case at 0.0370.  Why doesn't it grow toward 1?  
+
+  T looks OK, s looks OK, Isyn is always 0.  Figure out why.  
+
+  * Thursday, October 11, 2018
+  It seemed for a moment that the Izhevich model could not handle the case where more than one cell fires in one timestep.  Now I see that this is not the case. 
+  If more than one cell fires in one time step, that timestep is repeated in the "firings":  2 or more rows will have the same entry in the left column and different
+  entries in the right column.  
+
+  Isyn is 10 orders of magnitude smaller than than Iapp.  This may explain why it is not doing anything.  I checked the units again, and they all check out: Both
+  Isyn and Iapplied are in units of pA.  
+
+  I just ran the python code (after some fixing) and it seems like the python code and my matlab code are matching up, but neither is giving me what I would expect. 
+  In both cases, all the cells fire synchronously giving about 24 spikes per second.  
+  I set the gsyn to 0 in the python code and it made no change to the output, just like when I make the same change in my matlab code: no change to output. 
+
+  11:12: My matlab code is now looking pretty good.  With gsyn set to 0 I get coherent firing, just like the python code with 23 spikes per second.  With gsyn
+  set to 4.8, the cells all start in sync but then desynchronize by about 750 ms.  This may be good enough to go with.  
+
+  
+  * Thursday, October 25, 2018
+  I had some really strange issues with updating Izhikebich_modified.m today.  I changed code in the file, but when I run it those new changes don't run. 
+  I restarted hoping that would help.  Also, the directory called two-photon-stuff no longer exists.  That is strange. 
+
+  Use nchoosek.m to set up the matrix of all possible combos of two cells to compute phi_ij and phi.  
+  
+  11:11 I ran the model with gsyn = 1.5 nS and Iapp=595 pA to reproduce the lower inset panel in Ferguson Figure 5 panel A, but the output did not look
+  as random as what they show in the figure.  I did get a very different PSD plot with a clear max frequency at 192.5 Hz.  Keep checking to make sure 
+  the model is working correctly.  
+
+  starting to code up phi calculation.  Needed to keep v at each time step rather than overwriting.  This required some changes to Izhikevich_modified.m. 
+
+
+  * Monday, October 29, 2018
+  My goal today was to code up phi calculuation, but first I had to fix some bugs introduced by keeping v at every time step rather than overwriting. 
+  One issue was in resetting v and u and T and setting k if cells had fired.  If none fired, now I get an error.  I fixed this and was hopeful that 
+  this would improve the output of the model, but instead it made it worse. In trying to recreate the lower inset of panel A in figure 5, I now get really
+  synchronized output.  Very synchronized, almost no noise.  Why is this happening? and what changed by simply keeping v at every step instead of overwriting? 
+
+  11:57  Changing gsyn to 0 made no change to the raster plot or the frequency plot
+
+
+  I tried changing connectivity to 90% instead of 12% and all but about 15 cells are still really synchronized. When I made connectivity zero, all 
+  cells synchronized (with noise).  Check relative size of synaptic current in Izhevich paper and compare to mine.  For me I think s is way smaller 
+  than the other variables so that may be why synaptic currents seem to have no impact on firing.  
+
+  2:13 maximum Isyn during spiking is 39.1191, which is a lot smaller than Iapp. 
+
+  One idea: perhaps it is how I keep s from getting too large.  In my update equation for s I use the "any" command.  Perhaps I should sum the 
+  inputs or something.  
+
+  * Tuesday, October 30, 2018
+  To get something working: try using the simpler synaptic connection model like Izhikevich uses in his code.  Perhaps I can modify it to make connections to
+  only 12% of other cells or so.  
+
+  Try coding up the synaptic connections using equations 4 and 5.  That may give me more flexibility in adding up conductances from multiple synapses.
+
+  11:00 Even with the new way of updating s, with Iapp set to 150 (which should give no synchrony) there was a ton of synchrony.  All cells firing at 
+  the same time just like before.  
+With so few connections, how do any simulations go to unsyncronized firing?  What I'm seeing actually makes sense in some ways:  If only 12% are connected, 
+and all cells start with same I.C. (with noise) and receive same Iapp (with noise) they will all fire in the same way.  Try using the simpler way that Izhivich
+does in his code.  Use S(find(S>0.12))=0 to set all but 12% of the values to 0.  
+
+11:35 I realized I had set connectivity to 90% so I set it back to 12%, but it didn't make a difference.  Same crazy synchronization.  
+
+* Thursday, November 1, 2018
+Idea: it seems like the synaptic current is way too small (compared to Iapp).  Perhaps a typo in paper?  Try setting it to a much larger number. 
+
+8:50 I tried setting gsyn to 15 rather than 1.5 and there was a little more desynchrony, but not much.  try 150.  
+
+YES!  with gsyn set to 150 and Iapp set to 150 I finally get completely random firing, much like the lower inset in panel A of figure 5 in Ferguson.  The units
+must have been off or there was a major typo in the paper.  CHECK THIS
+Now I'm trying to increase Iapp to 600 to see if I can get coherent firing again.  
+YES! When I switched Iapp to 600 I see nice regular firing, just like the top inset in panel A of Figure 5 at about the same frequency as they have!! 
+
+Next: code up coherence measure so I can see if I am roughly reproducing Figure 5 panel A.   
+
+10:34 I have coded up the coherence measure and it seems to work, but I got a phi of 0.84 for the upper panel in panel A.  However, I am using tau = 1 ms 
+rather than what they used (1/coherent freq).  That may explain the difference.  It may be worth checking, or I could just check the other case with 
+low coherence and make sure it give me a low phi value.  
+
+Need to modify compute_phi to handle the case when a cell does not fire at all during the last 500 ms of the simulation.  FIXED: I used the 'omitnan' flag 
+in the call to mean at the very end.  Now I get a phi of 0.0114 when gsyn=150 and Iapp=150. this completely jives with Figure 5.  Low synchrony if Iapp 
+is really low. 
+
+The last thing I was doing was some profiling.  I found that the line with if any(....) is requiring about 80% of processor time.  I started to write up a 
+test for speed between any.m and sum.m  
+
+* Tuesday, November 6, 2018
+I wrote up a little test to compare the speed of if any vs sum and "if any" was actually a little faster than sum.  So for now I will stick with that, 
+but I'm guessing there is some way to make that faster.  
+
+11:00 AM I have coded up compute_gamma_power, but so far I'm getting zeros for all of the frequency bands.  I wonder if the way I'm computing deltaIdx, etc
+is different in Matlab 2018.  I shouldn't be getting all zeros for each frequency band.  Also check units.  Freqs_new doesn't seem to be in correct units 
+or is not broken down enough. there aren't any between 0 and 195 for instance.  
+
+* Thursday, November 15, 2018
+I think I fixed the issue with the frequency bands.  I needed to tell pwelch which frequecies to output.  
+More testing: 10:55: I am doing a run with gsyn = 600 and Iapp=600 and I get incoherent firing, just like I hoped.  phi = 0.05  average gamma power = 0.08
+with gsyn = 150, Iapp=600 gives coherent firing.  phi = 0.844, average gamma power = 10.34  
+This is good.  So for a constant value of Iapp, by simply reducing the strength of inhibitory connections between the cells, it can increase gamma power significantly.
+
+Think about what to do next:  Should I try a range of gsyn and Iapp values and plot gamma power?  I could check sensitivity to standard deviation of Iapp too.  Go back to 
+Wisor/Sorg grant proposal to see what I should do next.  
+
+
+* Sunday, November 25, 2018
+working on Ashley's stuff.  I could not get the executable from Daniel to work.  When I try to select files, nothing happens. 
+
+* Tuesday, November 27, 2018
+At WSU this morning.  I spoke with Jonathan about Ashley's project and I should focus on getting peaks to Jonathan for him to analyze.  
+Use Daniel's program first.  
+
+I can see all the windows in Daniels program, and it seems to be running, but I'm not getting anything useful out of Daniel's program so far.  Gets stuck on "detrending" and then if I go to export tab, it says it is exporting, but the file never appears.  
+
+If finally got Daniels program to work only if I use "movmad" option for detrending.  I saved one file 
+
+
+* Tuesday, December 4, 2018
+I've been messing with the plotting stuff for the astrocytes data.  The code doesn't produce good output so far on the full dataset, I think because there are big jumps in 
+the time in the .xlsx file.  It still works on the sleepstages_sample file.  
+I think the best way to move forward is to work with finding peaks.  
+
+
+On the Barb Sorg project:  Re-reading the grant proposal and thinking about how I can contribute.  Do I scale up the Ferguson model in some way?  I had written in my copy of the grant proposal that the experiments for Aim 1 should be carried out fall 2018.  
+:TODO: Meet with Priyanka to see if the data for the experiments in Aim 1 are stored here:  Bushana/NAC Sleep These datasets may give me information that I can use to test how sleep architecture changes with changes to PNN.  Also, I could maybe use Process S to quantify rise and fall times of SWA (see "Expected outcome for Experiment 1" in proposal.  )
+
+* Thursday, December 6, 2018
+I met with Priyanka this morning and asked her which Aims of the grant include polysomnography.  Aim 1 does.  Aim 2A does not seem to.  Aim 2B will because it's two photon.  Aim 3 does not.  Aim 4 will have EEG since it is imaging.  
+
+:DATA_LOCATION: She pointed me to some data she has already collected that is not really part of any of the aims in the proposal.  Bushana\NAC Sleep\all hi-dose expt\
+She has done autoscoring (and fixed some output) and she is happy with it.    Autoscore_Input_log.txt lists which EEG was used and whether EMG was used or not.  
+
+For the protocol for the data in all_hi-dose_expt, see the poster GRC Poster 03-14-18.pptx in Bushana folder.  Each recording contains either baseline day + 6-hr sleep dep (as shown in poster) where during the sleep dep the animal was injected either with saline or with NAC.  
+
+To find out when the injections happened, look for the artifacts marked X starting near 6:00 AM, but they are probably around 6:20 or so.  
+
+* Wednesday, December 12, 2018
+Looking at Priyanka's poster: She shows percentage of each sleep state in each hour during SD and after SD for the control group and NAC group (Fig 4).  They do not see much 
+of a difference between the two groups, but I'm wondering if it would be helpful to look at episode duration and number of bouts as well.  I could generate this experimental data 
+using SleepReport and then if something interesting shows up I can try to use my shift work model to simulate it.  
+It looks like most of the interesting differences between the NAC and control groups happen in gamma power and delta power, so I may need to use the Ferguson model eventually.  
+
+* Thursday, December 13, 2018
+I met with Jonathan this morning to go over his ROI pattern-finding code.  He sent me a link.  He would like to wrap this up next week.  I should take a look at it, fix errors that
+I may find and run it on the full recording, not just the sample.  
+
+I am modifying the code so it works with R2018 or R2015, since loading tables is so much faster and cleaner in R2018.  Check how Jonathan sets up the variable Stage, because I don't quite get
+it and I need to make sure that the R2018 version of the code does the same thing.  
+
+
+* Tuesday, January 8, 2019
+I met with Jonathan and Priyanka to talk about the Chen et al NEURON 2017 paper and modeling opportunities.  They were enthusiastic about the modeling approach.  I do need to read the paper more carefully to see about if my understanding of the graphical abstract is correct, but I think it is.  I put arrows in my printout of the paper to show which sections I need to read carefully to constrain the models for SOM cells and PC cells and PV cells.  
+:TODO: Think about the structure of the program: should I have one function that updates PV cells, one for SOM cells, and one for PC cells?  
+
+* Friday, January 11, 2019
+I thinking about how to model the pyramidal cells and SOM (somatostatin) cells.  I found this paper Mazzoni et al 2015 that uses leaky int-n-fire models.  It may be helpful.  
+
+* Tuesday, January 22, 2019
+Talk to Jonathan about the ROI stuff.  The code ran on UltraRoss, but I am not understanding the results.  ROIFiringSequence is not making sense to me.  
+
+* Thursday, January 24, 2019
+I just talked with Jonathan about the ROI stuff.  Looking at ROIFiringSequence{1,1} each column does refer to a distinct group of 6 cells.  Each
+row is another time that group of 6 fired together.  I looked up tierank and I think I understand it now. 
+Keep going with my idea written on paper to convert to ABCDEF and store all the sequences in cell arrays (set up by arousal state and baseline 
+vs not.) then I think I should be able to carry out the analysis I have written on the sheet on the left.  I still need to work through a couple 
+of quirky issues with cell arrays in matlab. 
+
+:NOTE: I have moved comments about the Frank lab research to another file: Research Journal for work with Frank lab starting.org.  It can be found in MATLAB/Rempe. 
+
+* Friday, February 1, 2019
+Working on PV_model.m to check it and maybe speed it up before I work on PV_PC_SOM model. 
+I'm working on a new way to make the raster plot since what I had before was really slow.  DONE.  Somewhat faster.  
+One issue to think about:  If a voltage reaches 2.5, it gets reset to -70 and by reset I mean changed to -70 rather than 2.5.  This will affect the average voltage plot. 
+A better way would be to let it go to 2.5 and then set the NEXT value to -70 instead of overwriting the current value to -70. I did  not pursue this, but I set up another
+vector that has the voltage before it was reset.  
+
+I'm calculating the average voltage differently now.  This didn't work.   The plots overlay.  V gets reset so I guess v_with_spikes does too.  
+
+* Monday, February 4, 2019
+v_with_spikes does seem to reach 2.5, at least at line 96 of the code.  Does it get reset back to a lower value too?  NO. 
+AHA:  I think it is actually working correctly.  What I am plotting is the AVERAGE membrane potential over all cells.  In this scenario the cells are mostly 
+firing together, but if you look closely, not ALL cells are firing at exactly the same time.  Since some are at rest near -60, the AVERAGE membrane 
+potential is near -8 mV and is not very different from not including the spikes.  
