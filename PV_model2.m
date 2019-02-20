@@ -1,4 +1,4 @@
-function [v,avg_mem_potential,network_freq,phi] = PV_model(N,tfinal,dt,gsyn,Iapp_meanIN,Iapp_stdIN)
+function [v,avg_mem_potential,network_freq,phi2] = PV_model2(N,tfinal,dt,gsyn,Iapp_meanIN,Iapp_stdIN)
 % 
 % Usage: v=Izhikevich_modified(N,tfinal,gsyn,Iapp_mean,Iapp_std)
 %
@@ -11,7 +11,7 @@ function [v,avg_mem_potential,network_freq,phi] = PV_model(N,tfinal,dt,gsyn,Iapp
 % 		tfinal: 	    length of simulation (in ms) [1500]
 %     dt:           timestep (in ms) [0.01]
 %			gsyn: 		    synapse conductance (in nS) [150 NOTE typo in Ferguson et al 2013]
-%			Iapp_meanIN:  mean applied current (in pA) [600]  (use 150 to get incoherent firing)
+%			Iapp_meanIN:  mean applied current (in pA) [600]
 %			Iapp_stdIN:	  std of applied current (in pA) [12]
 %
 % OUTPUT:	v: 	voltage of all cells in the network.  
@@ -24,15 +24,17 @@ addpath other_models_code   % this is where compute_phi lives
 
 
 
-tic
+
 timesteps = tfinal/dt;  
 steps_in_one_ms = 1/dt;  
 t=0:dt:tfinal;
+last500ms_indx = find(abs(t-(tfinal-500))<1e-12);
+last_500ms_indices = find(t>=tfinal-500);
 
 %re = rand(N,1);             % vertically concatenated. these are column vectors
 a  =  0.1*ones(N,1);         % parameter a describes time scale of recovery
 b  = -0.1*ones(N,1);      	% parameter b describes sensitivity of u to v
-c  =  -70*ones(N,1);         %+15*re.^2;         % parameter c describes after-spike reset value of v
+c  =  -67*ones(N,1);         %+15*re.^2;         % parameter c describes after-spike reset value of v
 d  =   10*ones(N,1);          %0.1*ones(N,1);   %8-6*re.^2;           	 % parameter d describes after-spike reset value of u
 %S  =  0.5*rand(N,N);  
 Cm =   90*ones(N,1);
@@ -82,27 +84,24 @@ T    = zeros(N,timesteps);		  % rows correspond to cell numbers, columns to time
 Isyn = zeros(N,timesteps);			% initialize vector for synaptic input
 
 for step=1:timesteps           
-  vplot(step)=v(1,step);
-  v_with_spikes(:,step)=v(:,step);    % Before you reset v, save it
-  uplot(step)=u(1);
-  Iapp = randn(N,1).*Iapp_std + Iapp_mean;
-	fired    = find(v(:,step)>=2.5);    			 % indices of cells that spiked
+  vplot(step)           = v(1,step);
+  v_with_spikes(:,step) = v(:,step);    % Before you reset v, save it
+  uplot(step)           = u(1);
+  Iapp  = randn(N,1).*Iapp_std + Iapp_mean;
+	fired = find(v(:,step)>=2.5);    			 % indices of cells that spiked
   fired_cells_indx(:,step) = v(:,step)>=2.5;            % logical array of whether cell fire 
-  %firings  = [firings; t(step)+0*fired,fired]; % add a row to firings for every cell that fired with two elements: time fired and cell number
+  %firings  = [firings; t(step)+0*fired,fired]; % add a row to firings for every cell that firedwith two elements: time fired and cell number
                                                 % this works, but is slow.  You can uncomment previous line if needed. 
+  v_high   = find(v(:,step)>vt);
+  v_low    = find(v(:,step)<=vt);
+  k(v_high)= k_high;
+  k(v_low) = k_low;
+
 
   if ~isempty(fired)                        % if at least one cell fired this timestep, reset v,u,T, and k for those cells
     v(fired,step) = c(fired);               % after spike reset v
     u(fired)      = u(fired)+d(fired);	          % after spike reset u
     T(fired,step:step+steps_in_one_ms) = 1;
-    % v_high   = find(v(fired,step)>=vt);
-    % v_low    = find(v(fired,step)<vt);
-    % k(v_high)= k_high;
-    % k(v_low) = k_low;
-    k(v(fired,step)>=vt) = k_high;  %Faster? logical indexing
-    k(v(fired,step)<vt)  = k_low;  
-  else
-    k(:) = k_low;                             % if no cells fired this timestep, don't reset v, or u. Just set k to low value
   end
   
   
@@ -145,11 +144,11 @@ max_freq_indx = find(pxx==max(pxx));
 network_freq = f(max_freq_indx)
 
 % compute network coherency
-phi = compute_phi(v,N,dt)
+phi = compute_phi(v(:,last_500ms_indices),N,dt)
+phi2 = compute_phi2(fired_cells_indx,N,dt,last500ms_indx,network_freq)
 
 
 
-toc
 figure
 %plot(firings(:,1),firings(:,2),'.')  %slow but works well
 spy(fired_cells_indx)
