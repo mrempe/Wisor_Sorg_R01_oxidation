@@ -1,4 +1,4 @@
-function [v,avg_mem_potential,network_freq,phi2] = PV_model2(N,tfinal,dt,gsyn,Iapp_meanIN,Iapp_stdIN)
+function [v,avg_mem_potential,network_freq,phi2] = PV_model3(N,tfinal,dt,gsyn,Iapp_meanIN,Iapp_stdIN)
 % 
 % Usage: v=Izhikevich_modified(N,tfinal,gsyn,Iapp_mean,Iapp_std)
 %
@@ -18,6 +18,8 @@ function [v,avg_mem_potential,network_freq,phi2] = PV_model2(N,tfinal,dt,gsyn,Ia
 %         avg_mem_potential: membrane potential averaged across cells (contains as many elements as timesteps)
 %         network_freq:  frequency at which there is a spectral peak during last 500ms of simulation
 %         phi:            average cross-correlation between all spike trains (whole simulation)
+
+
 
 
 addpath other_models_code   % this is where compute_phi lives
@@ -57,6 +59,7 @@ Iapp  = randn(N,1).*Iapp_std + Iapp_mean;
 conn_mat  = rand(N);  % conn_mat: connectivity matrix.  columns are pre-synaptic cells, rows are post-synaptic
 %conn_mat = zeros(N);  %TESTING:  remove all connectivity
 
+conn_mat = conn_mat-diag(diag(conn_mat));  % remove the diagonal entries so cells don't synapse onto themselves
 locs_low  = find(conn_mat<=0.12);
 locs_high = find(conn_mat>0.12);
 conn_mat(locs_low)  = 1;
@@ -103,33 +106,60 @@ for step=1:timesteps
     u(fired)      = u(fired)+d(fired);	          % after spike reset u
     T(fired,step:step+steps_in_one_ms) = 1;
   end
-  
-  
-  for j = post_syn_cells'
-    if any(T(pre_syn_connections{j},step))  % if any presyanptic cell has fired in the last ms
-      s(j,step+1) = s_inf + (s(j,step)-s_inf)*exp(-dt/tau_s);
-    else
-      s(j,step+1) = s(j,step)*exp(-beta*dt);
-    end
-  end
+  % figure(47)
+  % spy(T(:,1:step+steps_in_one_ms))
+  % axis([0 step+steps_in_one_ms 0 501])
+ 
+  % OLD WAY: 
+  % for j = post_syn_cells'
+  %   if any(T(pre_syn_connections{j},step))  % if any presyanptic cell has fired in the last ms
+  %     s(j,step+1) = s_inf + (s(j,step)-s_inf)*exp(-dt/tau_s);
+  %   else
+  %     s(j,step+1) = s(j,step)*exp(-beta*dt);
+  %   end
+  % end
+
+% OLD WAY: 
+  % conn_mat_pre_syn_fired_cols = conn_mat(:,fired);
+  % [rows,cols]=find(conn_mat_pre_syn_fired_cols);
+  % if ~isempty(rows)
+  % 	for i=1:length(rows)
+		%   Isyn(rows(i),step) = gsyn*s(rows(i),step)*(v(rows(i))-esyn);
+  % 	end
+  % end
+
+% NEW WAY:
 
 
+Isyn(:,step) = (gsyn*conn_mat*s(:,step)).*(v(:,step)-esyn);
 
-  conn_mat_pre_syn_fired_cols = conn_mat(:,fired);
-  [rows,cols]=find(conn_mat_pre_syn_fired_cols);
-  if ~isempty(rows)
-  	for i=1:length(rows)
-		  Isyn(rows(i),step) = gsyn*s(rows(i),step)*(v(rows(i))-esyn);
-  	end
-  end
+
   v(:,step+1) = v(:,step)+(dt./Cm).*(k.*(v(:,step)-vr).*(v(:,step)-vt)-u+Iapp-Isyn(:,step));
   u = u+dt.*a.*(b.*(v(:,step)-vr)-u); 
-             
-  
+   
+for i=1:N % loop over cells
+  if T(i,step)
+    s(i,step+1) = s_inf + (s(i,step)-s_inf)*exp(-dt/tau_s);
+  else
+    s(i,step+1) = s(i,step)*exp(-beta*dt);
+  end
+end
 
 
 
   splot(step) = s(5,step);
+
+  if step ==round(timesteps/4)
+    disp('25% finished...')
+  elseif step == round(timesteps/2)
+    disp('50% finished...')
+  elseif step == round(0.75*timesteps)
+    disp('75% finished...')
+  end 
+
+
+
+
 end  % end of looping through timesteps
 
 avg_mem_potential = mean(v_with_spikes,1);
