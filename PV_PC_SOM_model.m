@@ -1,4 +1,4 @@
-function [v,avg_mem_pot_all,avg_mem_pot_PV,avg_mem_pot_PC,avg_mem_pot_SOM,network_freq,phi] = PV_PC_SOM_model(N_PV,N_PC,N_SOM,tfinal,dt,gsyn,Iapp_meanIN,Iapp_stdIN)
+function [v,avg_mem_pot_all,avg_mem_pot_PV,avg_mem_pot_PC,avg_mem_pot_SOM,network_freq_all,network_freq_PV,network_freq_PC,network_freq_SOM,phi] = PV_PC_SOM_model(N_PV,N_PC,N_SOM,tfinal,dt,gsyn,Iapp_meanIN,Iapp_stdIN)
 % 
 % Usage: [v,avg_mem_potential,network_freq,phi] = PV_PC_SOM_model(N_PV,N_PC,N_SOM,tfinal,dt,gsyn,Iapp_meanIN,Iapp_stdIN)
 %
@@ -121,7 +121,7 @@ PCPC_conn_prob   = 0.12;
 PCSOM_conn_prob  = 0.12;
 SOMPV_conn_prob  = 0.12;
 SOMPC_conn_prob  = 0.12;
-SOMSOM_conn_prob = 0.12;
+SOMSOM_conn_prob = 0;
 % ------------------------------------------------------------------------------------
 
 
@@ -149,13 +149,13 @@ conn_mat = build_connection_matrix(N_PV,N_PC,N_SOM,PV_cell_index,PC_cell_index,S
                       SOMPV_conn_prob,SOMPC_conn_prob,SOMSOM_conn_prob);
 
 
-[post_syn_cells,pre_syn_cells] = find(conn_mat);
-post_syn_cells = unique(post_syn_cells);
-pre_syn_cells  = unique(pre_syn_cells);
+% [post_syn_cells,pre_syn_cells] = find(conn_mat);
+% post_syn_cells = unique(post_syn_cells);
+% pre_syn_cells  = unique(pre_syn_cells);
 
-for i=post_syn_cells'
-  pre_syn_connections{i} = find(conn_mat(i,:));  % cell array where each entry corresponds to a post-synaptic cell. Each entry lists pre-synaptic cells, if any, that connect to this cell
-end
+% for i=post_syn_cells'
+%   pre_syn_connections{i} = find(conn_mat(i,:));  % cell array where each entry corresponds to a post-synaptic cell. Each entry lists pre-synaptic cells, if any, that connect to this cell
+% end
 
 % % ---- PV connectivity matrix, connect each PV cell randomly --------------------------- 
 % % ---- with all other PV cells with probability 12% ------------------------------------
@@ -234,7 +234,7 @@ Isyn = zeros(N,timesteps);			% initialize vector for synaptic input
 
 
 disp('Done initializing and setting up.  ')
-
+disp('Now updating the network....')
 % ---------------------------- UPDATING LOOP ---------------------------------------------
 % ----------------------------------------------------------------------------------------
 for step=1:timesteps           
@@ -264,70 +264,22 @@ for step=1:timesteps
     T(fired,step:step+steps_in_one_ms) = 1;
   end
   
-
-  for j = post_syn_cells'
-    if any(T(pre_syn_connections{j},step))  % if any presynaptic cell has fired in the last ms
-      s(j,step+1) = s_inf + (s(j,step)-s_inf)*exp(-dt/tau_s);
-    else
-      s(j,step+1) = s(j,step)*exp(-beta*dt);
-    end
-  end
-
- 
-  % % ------------ PV-PV synapses ----------------  
-  % if ~isempty(fired) & sum(fired_cells_indx(PV_cell_index,step))>0   % if ANY cells have fired (fired is not empty) and specifically PV cells have fired
-  %   fired_cols = (find(fired>=PV_cell_index(1) & fired<=PV_cell_index(end))) - N_PV;
-  %   PV_conn_mat_pre_syn_fired_cols = PV_conn_mat(:,fired(fired_cols));
-  %   [rows,~]=find(PV_conn_mat_pre_syn_fired_cols);
-  %   if ~isempty(rows)
-  % 	 for i=1:length(rows)
-		%     Isyn(rows(i),step) = gsyn*s(rows(i),step)*(v(rows(i))-esyn);
-  % 	 end
-  %   end
-  % end 
-  % % --------------------------------------------
-
-  % % ------------ PC-PC synapses ----------------  
-  % if ~isempty(fired) & sum(fired_cells_indx(PC_cell_index,step))>0
-    
-  %   PC_conn_mat_pre_syn_fired_cols = PC_conn_mat(:,fired(find(fired>=PC_cell_index(1) & fired<=PC_cell_index(end))));
-  %   [rows,~]=find(PC_conn_mat_pre_syn_fired_cols);
-  %   offset = N_PV;
-  %   if ~isempty(rows)
-  %     for i=1:length(rows)
-  %       Isyn(rows(i)+offset,step) = gsyn*s(rows(i)+offset,step)*(v(rows(i)+offset)-esyn);
-  %     end
-  %   end
-  % end 
-  % % --------------------------------------------
-
-  % % ------------ SOM-SOM synapses ----------------  
-  % if ~isempty(fired) & sum(fired_cells_indx(SOM_cell_index,step))>0
-  %   SOM_conn_mat_pre_syn_fired_cols =SOM_conn_mat(:,fired(find(fired>=SOM_cell_index(1) & fired<=SOM_cell_index(end))));
-  %   [rows,~]=find(SOM_conn_mat_pre_syn_fired_cols);
-  %   offset = N_PV + N_PC;
-  %   if ~isempty(rows)
-  %     for i=1:length(rows)
-  %       Isyn(rows(i)+offset,step) = gsyn*s(rows(i)+offset,step)*(v(rows(i)+offset)-esyn);
-  %     end
-  %   end
-  % end 
-  % % --------------------------------------------
-
-% New way of doing synapses:  all in one big connectivity matrix
-
-  conn_mat_pre_syn_fired_cols = conn_mat(:,fired);
-  [rows,cols]=find(conn_mat_pre_syn_fired_cols);
-  if ~isempty(rows)
-    for i=1:length(rows)
-      Isyn(rows(i),step) = gsyn*s(rows(i),step)*(v(rows(i))-esyn);
-    end
-  end
-
+  Isyn(:,step) = (gsyn*conn_mat*s(:,step)).*(v(:,step)-esyn);
 
 
   v(:,step+1) = v(:,step)+(dt./Cm).*(k.*(v(:,step)-vr).*(v(:,step)-vt)-u+Iapp-Isyn(:,step)); % this is Forward Euler.  Do something better. 
   u = u+dt.*a.*(b.*(v(:,step)-vr)-u); 
+  
+  for i=1:N % loop over cells
+    if T(i,step)
+      s(i,step+1) = s_inf + (s(i,step)-s_inf)*exp(-dt/tau_s);
+    else
+      s(i,step+1) = s(i,step)*exp(-beta*dt);
+    end
+  end
+
+
+
   splot(step) = s(5,step);
   
   if step ==round(timesteps/4)

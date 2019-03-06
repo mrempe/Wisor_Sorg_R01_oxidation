@@ -1,4 +1,4 @@
-function [v,avg_mem_potential,network_freq,phi,spectral_power] = PV_model3(N,tfinal,dt,gsyn,Iapp_meanIN,Iapp_stdIN)
+function [v,avg_mem_potential,network_freq,phi2] = SOM_model(N,tfinal,dt,gsyn,Iapp_meanIN,Iapp_stdIN)
 % 
 % Usage: v=Izhikevich_modified(N,tfinal,gsyn,Iapp_mean,Iapp_std)
 %
@@ -19,7 +19,7 @@ function [v,avg_mem_potential,network_freq,phi,spectral_power] = PV_model3(N,tfi
 %         network_freq:  frequency at which there is a spectral peak during last 500ms of simulation
 %         phi:            average cross-correlation between all spike trains (whole simulation)
 
-profile on 
+
 
 
 addpath other_models_code   % this is where compute_phi lives
@@ -33,23 +33,22 @@ last500ms_indx = find(abs(t-(tfinal-500))<1e-12);
 last_500ms_indices = find(t>=tfinal-500);
 
 %re = rand(N,1);             % vertically concatenated. these are column vectors
-a  =  0.1*ones(N,1);         % parameter a describes time scale of recovery
-b  = -0.1*ones(N,1);      	% parameter b describes sensitivity of u to v
-c  =  -67*ones(N,1);         %+15*re.^2;         % parameter c describes after-spike reset value of v
-d  =   10*ones(N,1);          %0.1*ones(N,1);   %8-6*re.^2;           	 % parameter d describes after-spike reset value of u
+a  =  0.001*ones(N,1);         % parameter a describes time scale of recovery
+b  = 0.2*ones(N,1);      	% parameter b describes sensitivity of u to v
+c  =  -64*ones(N,1);         %+15*re.^2;         % parameter c describes after-spike reset value of v
+d  =   8*ones(N,1);          %0.1*ones(N,1);   %8-6*re.^2;           	 % parameter d describes after-spike reset value of u
 %S  =  0.5*rand(N,N);  
-Cm =   90*ones(N,1);
+Cm =   100*ones(N,1);
 k  =  1.7*ones(N,1);
-vr = -60.6*ones(N,1);
-vt = -43.1;  %*ones(N,1);
+vr = -64*ones(N,1);  % -64 from Hu et al 2011
+vt = -35;  %*ones(N,1);  % threshold set to -35 mV from Hu et al 2011
 alpha = (1/0.27);
 beta  = (1/1.8);
 s_inf = alpha/(alpha+beta);
 tau_s = 1/(alpha+beta);
 esyn  = -85;   %*ones(N,1);   
-k_low = 1.7;
-k_high = 14;
-
+k_low = 0.34; %1.4;  % my guess for SOM cells
+k_high = 1.5; %1.4;
 
 Iapp_std  = Iapp_stdIN*ones(N,1);
 Iapp_mean = Iapp_meanIN*ones(N,1);
@@ -60,15 +59,12 @@ Iapp  = randn(N,1).*Iapp_std + Iapp_mean;
 conn_mat  = rand(N);  % conn_mat: connectivity matrix.  columns are pre-synaptic cells, rows are post-synaptic
 %conn_mat = zeros(N);  %TESTING:  remove all connectivity
 
-conn_mat  = conn_mat-diag(diag(conn_mat));  % remove the diagonal entries so cells don't synapse onto themselves
+conn_mat = conn_mat-diag(diag(conn_mat));  % remove the diagonal entries so cells don't synapse onto themselves
 locs_low  = find(conn_mat<=0.12);
 locs_high = find(conn_mat>0.12);
 conn_mat(locs_low)  = 1;
 conn_mat(locs_high) = 0;
-mapping = cell(N,1);          % cell array listing all presynaptic cells for each post-syn cell
-for i=1:N
-  mapping{i} = find(conn_mat(i,:));
-end
+
 
 % [post_syn_cells,pre_syn_cells] = find(conn_mat);
 % post_syn_cells = unique(post_syn_cells);
@@ -81,14 +77,14 @@ end
 % end
 
 
-v = 10*rand(N,1)-65*ones(N,1); %-65*ones(N,1);    % Initial values of v, all -65 mV
+v = 10*rand(N,1)-64*ones(N,1); %-65*ones(N,1);    % Initial values of v, all -65 mV
 u = b.*v;            % Initial values of u done in original Izhevich code
 %u = zeros(size(v));  % try initializing u to zero
 s = zeros(length(v),timesteps);
 firings=[];             % spike timings
 
 T    = zeros(N,timesteps);		  % rows correspond to cell numbers, columns to time steps
-Isyn = zeros(N,1);			% initialize vector for synaptic input
+Isyn = zeros(N,timesteps);			% initialize vector for synaptic input
 
 for step=1:timesteps           
   vplot(step)           = v(1,step);
@@ -110,56 +106,26 @@ for step=1:timesteps
     u(fired)      = u(fired)+d(fired);	          % after spike reset u
     T(fired,step:step+steps_in_one_ms) = 1;
   end
-  % figure(47)
-  % spy(T(:,1:step+steps_in_one_ms))
-  % axis([0 step+steps_in_one_ms 0 501])
  
-  % OLD WAY: 
-  % for j = post_syn_cells'
-  %   if any(T(pre_syn_connections{j},step))  % if any presyanptic cell has fired in the last ms
-  %     s(j,step+1) = s_inf + (s(j,step)-s_inf)*exp(-dt/tau_s);
-  %   else
-  %     s(j,step+1) = s(j,step)*exp(-beta*dt);
-  %   end
-  % end
 
-% OLD WAY: 
-  % conn_mat_pre_syn_fired_cols = conn_mat(:,fired);
-  % [rows,cols]=find(conn_mat_pre_syn_fired_cols);
-  % if ~isempty(rows)
-  % 	for i=1:length(rows)
-		%   Isyn(rows(i),step) = gsyn*s(rows(i),step)*(v(rows(i))-esyn);
-  % 	end
-  % end
 
-% NEW WAY: (works great, but is a bit slow)
-%Isyn = (gsyn*conn_mat*s(:,step)).*(v(:,step)-esyn);
+  Isyn(:,step) = (gsyn*conn_mat*s(:,step)).*(v(:,step)-esyn);
 
-% Newer (and faster way)
-s_now = s(:,step);
-CS = zeros(N,1);
-for i=1:N
-  CS(i) = sum(s_now(mapping{i}));
-end
-
-Isyn = (gsyn*CS).*(v(:,step)-esyn);
-
-  v(:,step+1) = v(:,step)+(dt./Cm).*(k.*(v(:,step)-vr).*(v(:,step)-vt)-u+Iapp-Isyn);
+  if step <10000
+    f = 0;
+  else
+    f=1;
+  end 
+  v(:,step+1) = v(:,step)+(dt./Cm).*(k.*(v(:,step)-vr).*(v(:,step)-vt)-u+f*Iapp-Isyn(:,step));
   u = u+dt.*a.*(b.*(v(:,step)-vr)-u); 
- 
-rising_locs  = find(T(:,step));
-falling_locs = find(T(:,step)==0);
-
-s(rising_locs,step+1)  =  s_inf + (s(rising_locs,step)-s_inf)*exp(-dt/tau_s);
-s(falling_locs,step+1) = s(falling_locs,step)*exp(-beta*dt);
-% Old way, too slow: 
-% for i=1:N % loop over cells
-%   if T(i,step)
-%     s(i,step+1) = s_inf + (s(i,step)-s_inf)*exp(-dt/tau_s);
-%   else
-%     s(i,step+1) = s(i,step)*exp(-beta*dt);
-%   end
-% end
+   
+for i=1:N % loop over cells
+  if T(i,step)
+    s(i,step+1) = s_inf + (s(i,step)-s_inf)*exp(-dt/tau_s);
+  else
+    s(i,step+1) = s(i,step)*exp(-beta*dt);
+  end
+end
 
 
 
@@ -183,17 +149,11 @@ avg_mem_potential = mean(v_with_spikes,1);
 
 % compute network frequency following Ferguson et al 2013 
 % (freq at which there is a spectral peak in the last 500ms of population activity)
-fs      = (1/dt)*1000;     % sampling freq. in Hz  1000 to get from ms to sec
-signal  = avg_mem_potential(100001:end)-mean(avg_mem_potential(100001:end));  % remove mean to detrend
+fs = (1/dt)*1000;     % sampling freq. in Hz  1000 to get from ms to sec
+signal = avg_mem_potential(100001:end)-mean(avg_mem_potential(100001:end));  % remove mean to detrend
 [pxx,f] = pwelch(signal,fs/2,round(0.6*fs/2),200000,fs);
 max_freq_indx = find(pxx==max(pxx));
-network_freq  = f(max_freq_indx)
-gammaIdx    = (f>=80 & f<=100);
-theta530Idx = (f>=5 & f<=30);
-spectral_power = struct;
-spectral_power.gamma = sum(pxx(gammaIdx,:),1);
-spectral_power.theta = sum(pxx(theta530Idx,:),1); 
-
+network_freq = f(max_freq_indx)
 
 % compute network coherency
 phi = compute_phi(v(:,last_500ms_indices),N,dt)
@@ -204,7 +164,7 @@ phi2 = compute_phi2(fired_cells_indx,N,dt,last500ms_indx,network_freq)
 figure
 %plot(firings(:,1),firings(:,2),'.')  %slow but works well
 spy(fired_cells_indx)
-title(['Raster Plot gsyn = ', num2str(gsyn), ' Iapp = ', num2str(Iapp_mean(5))])
+title(['Raster Plot gsyn = ', num2str(gsyn), ' Iapp = ', num2str(Iapp_mean(1))])
 ylabel('Cell number')
 %xlabel('Time (ms)')  %use this if using plot(firings(:,1),firings(:,2),'.')
 xlabel('Timesteps')
@@ -238,5 +198,4 @@ ylabel('Power Spectral Density (dB/Hz)')
 axis([0 350 ylim])
 
 
-profile viewer
 

@@ -13,12 +13,12 @@ n=length(Iapp);
 
 parfor i=1:m
 	for j=1:n
-		[~,~,network_freq(i,j),phi(i,j)] = PV_model2(500,1500,0.01,gsyn(i),Iapp(j),12);
+		[~,~,network_freq(i,j),phi(i,j)] = PV_model3(500,1500,0.01,gsyn(i),Iapp(j),12);
 		close all;
 	end
 end
 
-save('Fig3_repro_results2.19.mat','network_freq','phi')
+save('Fig3_repro_results2.26.mat','network_freq','phi')
 
 
 figure
