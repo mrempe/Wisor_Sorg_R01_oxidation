@@ -18,8 +18,8 @@ function [v,avg_mem_potential,network_freq,phi,spectral_power] = PV_model3(N,tfi
 %         avg_mem_potential: membrane potential averaged across cells (contains as many elements as timesteps)
 %         network_freq:  frequency at which there is a spectral peak during last 500ms of simulation
 %         phi:            average cross-correlation between all spike trains (whole simulation)
+tic
 
-profile on 
 
 
 addpath other_models_code   % this is where compute_phi lives
@@ -29,8 +29,9 @@ addpath other_models_code   % this is where compute_phi lives
 timesteps = tfinal/dt;  
 steps_in_one_ms = 1/dt;  
 t=0:dt:tfinal;
-last500ms_indx = find(abs(t-(tfinal-500))<1e-12);
+last500ms_indx = find(abs(t-(tfinal-500))<1e-12); % just the one index corresponding to time t=500 ms before end
 last_500ms_indices = find(t>=tfinal-500);
+last_500ms_indices = last_500ms_indices(1:end-1);
 
 %re = rand(N,1);             % vertically concatenated. these are column vectors
 a  =  0.1*ones(N,1);         % parameter a describes time scale of recovery
@@ -60,11 +61,11 @@ Iapp  = randn(N,1).*Iapp_std + Iapp_mean;
 conn_mat  = rand(N);  % conn_mat: connectivity matrix.  columns are pre-synaptic cells, rows are post-synaptic
 %conn_mat = zeros(N);  %TESTING:  remove all connectivity
 
-conn_mat  = conn_mat-diag(diag(conn_mat));  % remove the diagonal entries so cells don't synapse onto themselves
 locs_low  = find(conn_mat<=0.12);
 locs_high = find(conn_mat>0.12);
 conn_mat(locs_low)  = 1;
 conn_mat(locs_high) = 0;
+conn_mat  = conn_mat-diag(diag(conn_mat));  % remove the diagonal entries so cells don't synapse onto themselves
 mapping = cell(N,1);          % cell array listing all presynaptic cells for each post-syn cell
 for i=1:N
   mapping{i} = find(conn_mat(i,:));
@@ -80,6 +81,13 @@ end
 % 	pre_syn_connections{i} = find(conn_mat(i,:));  % cell array where each entry corresponds to a post-synaptic cell. Each entry lists pre-synaptic cells, if any, that connect to this cell
 % end
 
+% inline functions for RK4 or Adams-Bashforth
+% fv = inline('(1/Cm)*(k.*(v-vr).*(v-vt)-u+Iapp-Isyn)','v','Cm','k','vr','vt','u','Isyn','Iapp');
+% fu = inline('a.*(b.*(v-vr)-u)','u','v','a','b','vr');
+
+%fv = @(v,Cm,k,vr,vt,u,Isyn,Iapp) (1/Cm)*(k.*(v-vr).*(v-vt)-u+Iapp-Isyn);
+%fu = @(u,v,a,b,vr) a.*(b.*(v-vr)-u);
+
 
 v = 10*rand(N,1)-65*ones(N,1); %-65*ones(N,1);    % Initial values of v, all -65 mV
 u = b.*v;            % Initial values of u done in original Izhevich code
@@ -90,7 +98,28 @@ firings=[];             % spike timings
 T    = zeros(N,timesteps);		  % rows correspond to cell numbers, columns to time steps
 Isyn = zeros(N,1);			% initialize vector for synaptic input
 
-for step=1:timesteps           
+
+% Bootstrap: Take one step of FE before starting Adams-Bashforth method 
+s_now = s(:,1);
+CS = zeros(N,1);
+for i=1:N
+  CS(i) = sum(s_now(mapping{i}));
+end
+
+Isyn = (gsyn*CS).*(v(:,1)-esyn);
+uold = u;
+Isyn_old = Isyn;
+k_old = k;
+v(:,2) = v(:,1)+(dt./Cm).*(k.*(v(:,1)-vr).*(v(:,1)-vt)-u+Iapp-Isyn);
+unew = u+dt.*a.*(b.*(v(:,1)-vr)-u); 
+vplot(1)           = v(1,1);
+v_with_spikes(:,1) = v(:,1);    
+uplot(1)           = u(1);
+
+
+
+% --- COMPUTING LOOP ---------------------------------------------------------------------------------
+for step=2:timesteps           
   vplot(step)           = v(1,step);
   v_with_spikes(:,step) = v(:,step);    % Before you reset v, save it
   uplot(step)           = u(1);
@@ -144,9 +173,40 @@ end
 
 Isyn = (gsyn*CS).*(v(:,step)-esyn);
 
-  v(:,step+1) = v(:,step)+(dt./Cm).*(k.*(v(:,step)-vr).*(v(:,step)-vt)-u+Iapp-Isyn);
-  u = u+dt.*a.*(b.*(v(:,step)-vr)-u); 
- 
+% Forward Euler (works 3.21.2019)
+%v(:,step+1) = v(:,step)+(dt./Cm).*(k.*(v(:,step)-vr).*(v(:,step)-vt)-u+Iapp-Isyn);
+%u = u+dt.*a.*(b.*(v(:,step)-vr)-u); 
+% FE new way: (works 3.22.2019 1:55PM)
+% v(:,step+1) = v(:,step)+dt*fv(v(:,step),Cm,k,vr,vt,u,Isyn,Iapp);
+% u = u+dt*fu(u,v(:,step),a,b,vr);
+
+
+% Second order Adams-Bashforth (working as of 3.22.2019 1:57PM)
+% v(:,step+1) = v(:,step) + (dt/2).*(3*fv(v(:,step),Cm,k,vr,vt,u,Isyn,Iapp)-fv(v(:,step-1),Cm,k_old,vr,vt,uold,Isyn_old,Iapp));
+% unew        = u         + (dt/2).*(3*fu(u,v(:,step),a,b,vr)-fu(uold,v(:,step-1),a,b,vr));
+% uold = u;
+% u = unew;
+% Isyn_old = Isyn;
+% k_old = k;
+
+% RK4 (problem here may be evaluating Isyn and u at the intermediate time steps)
+uhalf = u+(dt/2).*a.*(b.*(v(:,step)-vr)-u);
+ufull = u+dt.*a.*(b.*(v(:,step)-vr)-u);
+fv1 = fv(v(:,step),           Cm,k,vr,vt,u,Isyn,Iapp,0);
+fv2 = fv(v(:,step)+(dt/2)*fv1,Cm,k,vr,vt,uhalf,(gsyn*CS).*(v(:,step)+(dt/2)*fv1-esyn),Iapp,0);
+fv3 = fv(v(:,step)+(dt/2)*fv2,Cm,k,vr,vt,uhalf,(gsyn*CS).*(v(:,step)+(dt/2)*fv2-esyn),Iapp,0);
+fv4 = fv(v(:,step)+(dt)*fv3,  Cm,k,vr,vt,ufull,(gsyn*CS).*(v(:,step)+(dt)*fv3-esyn),Iapp,0);
+v(:,step+1) = v(:,step) + (dt/6).*(fv1+2*fv2+2*fv3+fv4);
+
+vhalf = v(:,step)+((dt/2)./Cm).*(k.*(v(:,step)-vr).*(v(:,step)-vt)-u+Iapp-Isyn);
+vfull = v(:,step)+(dt./Cm).*(k.*(v(:,step)-vr).*(v(:,step)-vt)-u+Iapp-Isyn);
+fu1 = fu(u,           v(:,step),a,b,vr);
+fu2 = fu(u+(dt/2)*fu1,vhalf,a,b,vr);
+fu3 = fu(u+(dt/2)*fu2,vhalf,a,b,vr);
+fu4 = fu(u+(dt)*fu3,  vfull,a,b,vr);
+u = u + (dt/6).*(fu1+2*fu2+2*fu3+fu4);
+
+
 rising_locs  = find(T(:,step));
 falling_locs = find(T(:,step)==0);
 
@@ -166,7 +226,8 @@ s(falling_locs,step+1) = s(falling_locs,step)*exp(-beta*dt);
   splot(step) = s(5,step);
 
   if step ==round(timesteps/4)
-    disp('25% finished...')
+    et = toc;
+    disp(['25% finished.... Should be finished at ',num2str(datestr(now + 3*seconds(et)))])
   elseif step == round(timesteps/2)
     disp('50% finished...')
   elseif step == round(0.75*timesteps)
@@ -184,8 +245,8 @@ avg_mem_potential = mean(v_with_spikes,1);
 % compute network frequency following Ferguson et al 2013 
 % (freq at which there is a spectral peak in the last 500ms of population activity)
 fs      = (1/dt)*1000;     % sampling freq. in Hz  1000 to get from ms to sec
-signal  = avg_mem_potential(100001:end)-mean(avg_mem_potential(100001:end));  % remove mean to detrend
-[pxx,f] = pwelch(signal,fs/2,round(0.6*fs/2),200000,fs);
+signal  = avg_mem_potential(last_500ms_indices)-mean(avg_mem_potential(last_500ms_indices));  % remove mean to detrend
+[pxx,f] = pwelch(signal,fs/2,round(0.6*fs/2),2*fs,fs);
 max_freq_indx = find(pxx==max(pxx));
 network_freq  = f(max_freq_indx)
 gammaIdx    = (f>=80 & f<=100);
@@ -196,9 +257,9 @@ spectral_power.theta = sum(pxx(theta530Idx,:),1);
 
 
 % compute network coherency
-phi = compute_phi(v(:,last_500ms_indices),N,dt)
+phi = compute_phi(v(:,last_500ms_indices),N,dt);
 phi2 = compute_phi2(fired_cells_indx,N,dt,last500ms_indx,network_freq)
-
+phi = phi2;  
 
 
 figure
@@ -238,5 +299,5 @@ ylabel('Power Spectral Density (dB/Hz)')
 axis([0 350 ylim])
 
 
-profile viewer
+
 
